@@ -30,3 +30,21 @@ Validação sem subir containers: `docker compose config` e `docker compose buil
 
 * **Engine:** `cd services/engine`, `corepack enable` (uma vez), `pnpm install`, `pnpm run dev`.
 * **Shared:** `cd services/shared`, `pnpm install`, `pnpm run check`.
+
+### Padrão de código (lint e formatação)
+
+| Serviço | Ferramentas | Comandos |
+|--------|-------------|----------|
+| `services/engine` | ESLint + Prettier | `pnpm run lint`, `pnpm run format`, `pnpm run format:check`, `pnpm run check` |
+| `services/shared` | ESLint + Prettier | os mesmos, na pasta `services/shared` |
+| `services/ai-worker` | [Ruff](https://docs.astral.sh/ruff/) | `pip install -r requirements-dev.txt`, `ruff check .`, `ruff format --check .` (ou `ruff format .`) |
+
+### CI no GitHub
+
+O workflow em `.github/workflows/ci.yml` roda em **push**, **pull_request** e pode ser disparado manualmente (**Actions → CI → Run workflow**). Inclui lint, verificação de formatação, build e Docker Compose.
+
+Para validar **antes** do `git commit`, use hooks locais (ex.: Husky + lint-staged).
+
+## Documentação
+
+* ADRs: pasta `docs/adrs/`.
