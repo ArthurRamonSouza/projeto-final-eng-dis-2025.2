@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.venv
+venv
+.env
+*.md
+.pytest_cache
+.ruff_cache
+pyproject.toml
+requirements-dev.txt
