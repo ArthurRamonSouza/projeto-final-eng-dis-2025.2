@@ -35,15 +35,15 @@ async def generate_challenges(
     prompt = f"""
     Você é um especialista em marketing e criação de quizzes educacionais.
     Com base no texto do anúncio abaixo, gere exatamente {requested_count} perguntas de múltipla escolha.
-    
+
     Texto do anúncio:
     "{content_text}"
-    
+
     Regras estritas:
     - Retorne APENAS um JSON válido. Não inclua blocos de código markdown.
     - Cada pergunta deve ter exatamente 4 opções.
     - A resposta correta deve ser exatamente igual a uma das 4 opções.
-    
+
     EXEMPLO DE FORMATO DE SAÍDA OBRIGATÓRIO:
     {{
       "items": [

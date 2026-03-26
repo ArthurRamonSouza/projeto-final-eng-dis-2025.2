@@ -14,7 +14,7 @@ async def run_test():
     ) as mock_get_content:
         with patch(
             "services.ai_service.save_generation_result", new_callable=AsyncMock
-        ) as mock_save_result:
+        ):
             # 1. Definimos o texto que simula o retorno do banco de dados
             texto_anuncio_falso = (
                 "O novo smartwatch FitPro 5 tem bateria que dura 14 dias, "
@@ -37,7 +37,8 @@ async def run_test():
 
                 # 3. Exibindo a mágica do Pydantic funcionando
                 print(
-                    f"\n✅ SUCESSO! A IA gerou {len(desafios_validados)} desafios e o Pydantic validou o formato!\n"
+                    f"\n✅ SUCESSO! A IA gerou {len(desafios_validados)} desafios "
+                    f"e o Pydantic validou o formato!\n"
                 )
 
                 for i, desafio in enumerate(desafios_validados, 1):
@@ -50,7 +51,8 @@ async def run_test():
                     print(f"Source: {desafio.source}\n")
 
                 print(
-                    "💾 Auditoria simulada: A função 'save_generation_result' foi chamada para registrar o sucesso!"
+                    "💾 Auditoria simulada: A função 'save_generation_result' "
+                    "foi chamada para registrar o sucesso!"
                 )
 
             except Exception as e:

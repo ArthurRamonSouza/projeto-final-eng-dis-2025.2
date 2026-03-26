@@ -29,7 +29,10 @@ async def run_db_test():
                 id="content_001",
                 ad_id=ad_id_teste,
                 content_type="description",
-                content_text="O Tênis Cloud Max oferece amortecimento supremo e malha respirável. Apenas R$ 299,00.",
+                content_text=(
+                    "O Tênis Cloud Max oferece amortecimento supremo e malha "
+                    "respirável. Apenas R$ 299,00."
+                ),
             )
             session.add(novo_anuncio)
             await session.commit()
