@@ -45,6 +45,10 @@ O workflow em `.github/workflows/ci.yml` roda em **push**, **pull_request** e po
 
 Para validar **antes** do `git commit`, use hooks locais (ex.: Husky + lint-staged).
 
+## Banco de dados
+
+* Schema Prisma: **`services/engine/db/prisma/`** (Postgres partilhado com o ai-worker). Migrações: `cd services/engine`, `pnpm db:migrate`. Ver `services/engine/db/README.md`.
+
 ## Documentação
 
 * ADRs: pasta `docs/adrs/`.
