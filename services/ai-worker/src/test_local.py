@@ -9,12 +9,8 @@ async def run_test():
 
     # Aqui nós 'sequestramos' as funções que iriam no PostgreSQL real
     # e trocamos por versões falsas (Mocks) que rodam na memória.
-    with patch(
-        "services.ai_service.get_ad_content", new_callable=AsyncMock
-    ) as mock_get_content:
-        with patch(
-            "services.ai_service.save_generation_result", new_callable=AsyncMock
-        ):
+    with patch("services.ai_service.get_ad_content", new_callable=AsyncMock) as mock_get_content:
+        with patch("services.ai_service.save_generation_result", new_callable=AsyncMock):
             # 1. Definimos o texto que simula o retorno do banco de dados
             texto_anuncio_falso = (
                 "O novo smartwatch FitPro 5 tem bateria que dura 14 dias, "
@@ -56,9 +52,7 @@ async def run_test():
                 )
 
             except Exception as e:
-                print(
-                    "\n❌ ERRO DURANTE O TESTE: O Pydantic bloqueou a IA ou houve falha na API."
-                )
+                print("\n❌ ERRO DURANTE O TESTE: O Pydantic bloqueou a IA ou houve falha na API.")
                 print(e)
 
 

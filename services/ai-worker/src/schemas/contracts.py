@@ -18,9 +18,7 @@ class LLMChallengeItem(BaseModel):
         max_length=4,
         description="Lista contendo as alternativas da pergunta",
     )
-    correct_answer: str = Field(
-        ..., description="A resposta correta correspondente à pergunta"
-    )
+    correct_answer: str = Field(..., description="A resposta correta correspondente à pergunta")
 
 
 class LLMResponse(BaseModel):
@@ -56,9 +54,7 @@ class Challenge(BaseModel):
         max_length=4,
         description="Regra: Deve ser obrigatoriamente um array com exatamente 4 itens ",
     )
-    correct_answer: str = Field(
-        ..., description="A alternativa designada como correta "
-    )
+    correct_answer: str = Field(..., description="A alternativa designada como correta ")
     source: Literal["ai", "static"] = Field(
         ...,
         description="Regra: A origem do desafio deve ser estritamente 'ai' (gerado) ou 'static' (fallback)",

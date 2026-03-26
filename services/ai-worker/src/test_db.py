@@ -21,17 +21,14 @@ async def run_db_test():
         # 2. Inserindo um dado falso (Seed) para simular o que a API Orquestradora faria
         ad_id_teste = "ad_banco_001"
 
-        existente = await session.execute(
-            select(AdContent).where(AdContent.ad_id == ad_id_teste)
-        )
+        existente = await session.execute(select(AdContent).where(AdContent.ad_id == ad_id_teste))
         if not existente.scalar_one_or_none():
             novo_anuncio = AdContent(
                 id="content_001",
                 ad_id=ad_id_teste,
                 content_type="description",
                 content_text=(
-                    "O Tênis Cloud Max oferece amortecimento supremo e malha "
-                    "respirável. Apenas R$ 299,00."
+                    "O Tênis Cloud Max oferece amortecimento supremo e malha respirável. Apenas R$ 299,00."
                 ),
             )
             session.add(novo_anuncio)
@@ -54,9 +51,7 @@ async def run_db_test():
             status="completed",
             error_message=None,
         )
-        print(
-            f"Registro de log salvo na tabela! ID: {resultado.id} | Status: {resultado.status}"
-        )
+        print(f"Registro de log salvo na tabela! ID: {resultado.id} | Status: {resultado.status}")
 
 
 if __name__ == "__main__":
