@@ -109,3 +109,6 @@ async def generate_challenges(
             error_message=str(e),
         )
         raise e
+
+
+# final de arquivo para forçar format
