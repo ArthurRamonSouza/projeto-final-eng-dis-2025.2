@@ -11,10 +11,7 @@ from models.domain import GenerationResult
 from schemas.contracts import Challenge, LLMResponse
 from services.repository import get_ad_content, save_generation_result
 
-# Força a leitura do .env
 load_dotenv()
-
-# Inicializa o novo cliente do Gemini puxando a chave da variável de ambiente
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 async def generate_challenges(
@@ -24,7 +21,7 @@ async def generate_challenges(
     requested_count: int
 ) -> List[Challenge]:
     
-    # 1. Busca o conteúdo no banco
+    #busca o conteudo no banco
     content_text = await get_ad_content(session, ad_id)
     if not content_text:
         await save_generation_result(
@@ -34,7 +31,7 @@ async def generate_challenges(
         )
         raise ValueError(f"Conteúdo para o ad_id {ad_id} não encontrado.")
 
-    # 2. Monta o Prompt para o Gemini
+    # monta o Prompt 
     prompt = f"""
     Você é um especialista em marketing e criação de quizzes educacionais.
     Com base no texto do anúncio abaixo, gere exatamente {requested_count} perguntas de múltipla escolha.
@@ -65,7 +62,7 @@ async def generate_challenges(
     """
 
     try:
-        # 3. Chama o serviço usando o NOVO SDK
+        # chama o serviço 
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
@@ -74,10 +71,10 @@ async def generate_challenges(
             )
         )
         
-        # 4. Normaliza a resposta com Pydantic
+        # ajusta a resposta
         llm_data = LLMResponse.model_validate_json(response.text)
         
-        # 5. Transforma na entidade oficial do sistema
+        # transforma na estrutura de desafios
         oficial_challenges = []
         for item in llm_data.items:
             challenge = Challenge(
@@ -90,7 +87,6 @@ async def generate_challenges(
             )
             oficial_challenges.append(challenge)
             
-        # 6. Registra o sucesso
         await save_generation_result(
             session=session, job_id=job_id, ad_id=ad_id, 
             requested_count=requested_count, generated_count=len(oficial_challenges), 

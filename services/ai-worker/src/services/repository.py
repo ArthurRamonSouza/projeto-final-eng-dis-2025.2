@@ -41,8 +41,7 @@ async def save_generation_result(
         status=status, 
         error_message=error_message 
     )
-    
-    # Adiciona na sessão e commita no banco de dados
+
     session.add(new_result)
     await session.commit()
     await session.refresh(new_result)

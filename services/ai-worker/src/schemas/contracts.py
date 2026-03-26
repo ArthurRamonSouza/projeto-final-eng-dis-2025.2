@@ -4,11 +4,11 @@ from typing import List, Literal
 from pydantic import BaseModel, Field
 
 
-# Validação e transformação da resposta do LLM para o contrato oficial do desafio
+# validacao e transformacao da resposta do LLM para o formato oficial do sistema
 class LLMChallengeItem(BaseModel):
     """
-    Representa a estrutura de um item individual dentro da resposta normalizada esperada do serviço externo de IA.
-    O worker é responsável por transformar essa resposta no contrato oficial de desafio.
+    Representa a estrutura de um item dentro da resposta formatada esperada da IA.
+    O worker é responsável por transformar essa resposta na estrutura oficial do sistema.
     """
     question: str = Field(..., description="Enunciado da pergunta gerada")
     options: List[str] = Field(..., min_length=4, max_length=4, description="Lista contendo as alternativas da pergunta")
@@ -16,15 +16,14 @@ class LLMChallengeItem(BaseModel):
 
 class LLMResponse(BaseModel):
     """
-    Representa o contrato da resposta completa esperada do LLM, que já deve vir normalizada.
+    Representa a resposta completa esperada do LLM, que já deve vir formatada.
     """
     items: List[LLMChallengeItem] = Field(..., description="Lista contendo as perguntas e opções geradas pelo serviço de IA")
 
-# Estrutura salva no pool do Redis para consumo da API 
+# estrutura salva no pool do redis
 class Challenge(BaseModel):
     """
-    Entidade oficial do Desafio.
-    Este é o contrato principal estabelecido entre Worker, Redis, PostgreSQL, API e frontend.
+    Entidade principal.
     """
     id: str = Field(..., description="Identificador único obrigatório do desafio")
     ad_id: str = Field(..., description="Identificador obrigatório do anúncio ao qual o desafio está associado")
