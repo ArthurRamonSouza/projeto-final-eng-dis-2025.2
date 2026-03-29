@@ -59,7 +59,9 @@ export const healthService = {
     getRedisPoolCircuit() {
         return {
             service: "engine" as const,
-            redis_challenge_pool_circuit: mapPoolCircuitToApi(getRedisPoolCircuitState()),
+            redis_challenge_pool_circuit: mapPoolCircuitToApi(
+                getRedisPoolCircuitState(),
+            ),
         };
     },
 };

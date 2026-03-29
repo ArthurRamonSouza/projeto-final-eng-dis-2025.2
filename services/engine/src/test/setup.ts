@@ -50,8 +50,8 @@ afterAll(() => {
 beforeEach(() => {
     vi.clearAllMocks();
     resetRedisPoolCircuit();
-    vi.mocked(prisma.$transaction).mockImplementation(async (cb: (tx: typeof prisma) => Promise<unknown>) =>
-        cb(prisma),
+    vi.mocked(prisma.$transaction).mockImplementation(
+        async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma),
     );
     vi.mocked(prisma.$queryRaw).mockResolvedValue([1]);
     vi.mocked(redis.ping).mockResolvedValue("PONG");

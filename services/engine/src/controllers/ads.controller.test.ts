@@ -92,7 +92,9 @@ describe("AdsController (rotas /ads)", () => {
 
     it("GET /ads/:adId/challenge — desafio vindo do Redis (IA)", async () => {
         vi.mocked(prisma.ad.findUnique).mockResolvedValue(sampleAd);
-        vi.mocked(redis.rpop as (key: string) => Promise<string | null>).mockImplementation(() =>
+        vi.mocked(
+            redis.rpop as (key: string) => Promise<string | null>,
+        ).mockImplementation(() =>
             Promise.resolve(
                 JSON.stringify({
                     id: "ch_1",

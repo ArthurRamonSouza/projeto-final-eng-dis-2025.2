@@ -22,14 +22,20 @@ const poolBreaker = new CircuitBreaker(redisPoolAction, {
 });
 
 poolBreaker.on("open", () => {
-    console.warn("[redis-pool-circuit] circuito aberto — chamadas ao Redis do pool em curto-circuito até half-open");
+    console.warn(
+        "[redis-pool-circuit] circuito aberto — chamadas ao Redis do pool em curto-circuito até half-open",
+    );
 });
 
 poolBreaker.on("halfOpen", () => {
-    console.warn("[redis-pool-circuit] circuito half-open — a testar Redis novamente");
+    console.warn(
+        "[redis-pool-circuit] circuito half-open — a testar Redis novamente",
+    );
 });
 
-export async function popChallengeWithCircuit(adId: string): Promise<string | null> {
+export async function popChallengeWithCircuit(
+    adId: string,
+): Promise<string | null> {
     try {
         return (await poolBreaker.fire("pop", adId)) as string | null;
     } catch {

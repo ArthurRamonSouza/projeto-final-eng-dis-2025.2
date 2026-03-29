@@ -54,13 +54,21 @@ export async function ipRateLimit(
     const max = env.RATE_LIMIT_MAX;
 
     try {
-        const raw = (await redis.eval(LUA_INCR_EXPIRE, 1, key, String(windowSec))) as unknown;
+        const raw = (await redis.eval(
+            LUA_INCR_EXPIRE,
+            1,
+            key,
+            String(windowSec),
+        )) as unknown;
         const tuple = raw as [number, number];
         const count = Number(tuple[0]);
         const ttl = Number(tuple[1]);
 
         res.setHeader("X-RateLimit-Limit", String(max));
-        res.setHeader("X-RateLimit-Remaining", String(Math.max(0, max - count)));
+        res.setHeader(
+            "X-RateLimit-Remaining",
+            String(Math.max(0, max - count)),
+        );
 
         if (count > max) {
             const retryAfter = ttl > 0 ? ttl : windowSec;
