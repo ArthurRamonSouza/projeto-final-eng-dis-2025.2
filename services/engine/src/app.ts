@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import { router } from "./router";
+import { router } from "./router.js";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { asyncHandler } from "./middleware/async-handler.js";
