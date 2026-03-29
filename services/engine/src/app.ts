@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import { router } from "./router";
+import { errorHandler } from "./middleware/error-handler.js";
 
 export const createApp = async (): Promise<Express> => {
     const app: Express = express();
@@ -13,6 +14,7 @@ export const createApp = async (): Promise<Express> => {
     });
 
     app.use(router);
+    app.use(errorHandler);
 
     return app;
 };
