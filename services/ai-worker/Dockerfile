@@ -3,7 +3,14 @@ FROM python:3.12-slim
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
-COPY src/ .
+COPY requirements.txt .
 
-CMD ["python", "-u", "main.py"]
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ ./src/
+
+ENV PYTHONPATH=/app/src
+
+CMD ["python", "-u", "src/main.py"]
