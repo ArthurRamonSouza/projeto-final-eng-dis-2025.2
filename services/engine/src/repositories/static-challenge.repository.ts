@@ -1,4 +1,4 @@
-import type { StaticChallenge } from "../generated/prisma/client.js";
+import type { StaticChallenge } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 export const staticChallengeRepository = {

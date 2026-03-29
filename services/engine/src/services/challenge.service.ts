@@ -1,4 +1,4 @@
-import type { Prisma } from "../generated/prisma/client.js";
+import type { Prisma } from "@prisma/client";
 import { HttpError } from "../errors/http-error.js";
 import { adRepository } from "../repositories/ad.repository.js";
 import { challengeConsumptionRepository } from "../repositories/challenge-consumption.repository.js";

@@ -1,4 +1,4 @@
-import type { GenerationJob } from "../generated/prisma/client.js";
+import type { GenerationJob } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 const REFILL_REASONS = ["initial_fill", "refill", "manual_refill"] as const;

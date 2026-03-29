@@ -23,6 +23,10 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
+COPY db/prisma ./db/prisma
+COPY prisma.config.ts ./
+RUN pnpm dlx prisma@7.5.0 generate
+
 COPY --from=build /app/dist ./dist
 
 EXPOSE 8000
