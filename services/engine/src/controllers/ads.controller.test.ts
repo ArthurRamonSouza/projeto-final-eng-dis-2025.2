@@ -92,14 +92,16 @@ describe("AdsController (rotas /ads)", () => {
 
     it("GET /ads/:adId/challenge — desafio vindo do Redis (IA)", async () => {
         vi.mocked(prisma.ad.findUnique).mockResolvedValue(sampleAd);
-        vi.mocked(redis.rpop).mockResolvedValue(
-            JSON.stringify({
-                id: "ch_1",
-                type: "multiple_choice",
-                question: "Pergunta?",
-                options: ["A", "B"],
-                source: "ai",
-            }),
+        vi.mocked(redis.rpop as (key: string) => Promise<string | null>).mockImplementation(() =>
+            Promise.resolve(
+                JSON.stringify({
+                    id: "ch_1",
+                    type: "multiple_choice",
+                    question: "Pergunta?",
+                    options: ["A", "B"],
+                    source: "ai",
+                }),
+            ),
         );
         vi.mocked(redis.llen).mockResolvedValue(5);
         vi.mocked(prisma.generationJob.count).mockResolvedValue(0);
@@ -128,7 +130,13 @@ describe("AdsController (rotas /ads)", () => {
                 createdAt: new Date(),
             },
         ]);
-        vi.mocked(prisma.challengeConsumptionLog.create).mockResolvedValue({});
+        vi.mocked(prisma.challengeConsumptionLog.create).mockResolvedValue({
+            id: "log_1",
+            challengeId: "st_1",
+            adId: "ad_existing",
+            source: "static",
+            consumedAt: new Date(),
+        });
         vi.mocked(redis.llen).mockResolvedValue(0);
         vi.mocked(prisma.generationJob.count).mockResolvedValue(1);
 

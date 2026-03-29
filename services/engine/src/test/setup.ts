@@ -1,8 +1,5 @@
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 
-process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
-process.env.REDIS_QUEUE_URL ??= "redis://127.0.0.1:6379/0";
-
 vi.mock("../lib/prisma.js", () => ({
     prisma: {
         $queryRaw: vi.fn(),
@@ -39,6 +36,7 @@ vi.mock("../lib/redis.js", () => ({
 
 import { prisma } from "../lib/prisma.js";
 import { redis } from "../lib/redis.js";
+import { resetRedisPoolCircuit } from "../lib/redis-pool-circuit.js";
 
 beforeAll(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -50,6 +48,7 @@ afterAll(() => {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetRedisPoolCircuit();
     vi.mocked(prisma.$transaction).mockImplementation(async (cb: (tx: typeof prisma) => Promise<unknown>) =>
         cb(prisma),
     );

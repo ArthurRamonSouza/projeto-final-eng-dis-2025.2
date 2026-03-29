@@ -1,14 +1,14 @@
-import { redis, poolKey } from "../lib/redis.js";
+import {
+    popChallengeWithCircuit,
+    poolSizeWithCircuit,
+} from "../lib/redis-pool-circuit.js";
 
 export const redisPoolRepository = {
     async popChallenge(adId: string): Promise<string | null> {
-        const key = poolKey(adId);
-        const raw = await redis.rpop(key);
-        return raw;
+        return popChallengeWithCircuit(adId);
     },
 
     async size(adId: string): Promise<number> {
-        const key = poolKey(adId);
-        return redis.llen(key);
+        return poolSizeWithCircuit(adId);
     },
 };
