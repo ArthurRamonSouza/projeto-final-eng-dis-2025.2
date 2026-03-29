@@ -1,8 +1,4 @@
-import type {
-    Ad,
-    AdContent,
-    GenerationJob,
-} from "@prisma/client";
+import type { Ad, AdContent, GenerationJob } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 export type CreateAdInput = {
