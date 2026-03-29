@@ -38,6 +38,10 @@ services:
       REDIS_QUEUE_URL: ${REDIS_QUEUE_URL:-redis://redis:6379/0}
       POOL_MIN: ${POOL_MIN:-3}
       POOL_TARGET: ${POOL_TARGET:-10}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      RATE_LIMIT_WINDOW_SEC: ${RATE_LIMIT_WINDOW_SEC:-60}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
     depends_on:
       postgres:
         condition: service_healthy

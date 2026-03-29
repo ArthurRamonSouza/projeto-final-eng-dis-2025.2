@@ -30,6 +30,7 @@ vi.mock("../lib/redis.js", () => ({
         rpop: vi.fn(),
         llen: vi.fn(),
         ping: vi.fn(),
+        eval: vi.fn().mockResolvedValue([1, 59]),
     },
     poolKey: (adId: string) => `orchestrator:challenge_pool:${adId}`,
 }));
