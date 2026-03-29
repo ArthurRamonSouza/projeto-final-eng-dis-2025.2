@@ -30,11 +30,14 @@ services:
   engine:
     build:
       context: ./services/engine
+      dockerfile: Dockerfile
     ports:
       - "${ENGINE_PORT:-8000}:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/app}
       REDIS_QUEUE_URL: ${REDIS_QUEUE_URL:-redis://redis:6379/0}
+      POOL_MIN: ${POOL_MIN:-3}
+      POOL_TARGET: ${POOL_TARGET:-10}
     depends_on:
       postgres:
         condition: service_healthy
