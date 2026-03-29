@@ -16,7 +16,6 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 async def generate_challenges(
     session: AsyncSession, job_id: str, ad_id: str, requested_count: int
 ) -> list[Challenge]:
-
     # busca o conteudo no banco
     content_text = await get_ad_content(session, ad_id)
     if not content_text:
@@ -109,6 +108,3 @@ async def generate_challenges(
             error_message=str(e),
         )
         raise e
-
-
-# final de arquivo para forçar format

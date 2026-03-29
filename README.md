@@ -37,7 +37,7 @@ Validação sem subir containers: `docker compose config` e `docker compose buil
 |--------|-------------|----------|
 | `services/engine` | ESLint + Prettier | `pnpm run lint`, `pnpm run format`, `pnpm run format:check`, `pnpm run check` |
 | `services/shared` | ESLint + Prettier | os mesmos, na pasta `services/shared` |
-| `services/ai-worker` | [Ruff](https://docs.astral.sh/ruff/) | `pip install -r requirements-dev.txt`, `ruff check .`, `ruff format --check .` (ou `ruff format .`) |
+| `services/ai-worker` | [Ruff](https://docs.astral.sh/ruff/) | `pip install -r requirements.txt`, `ruff check .`, `ruff format --check .` (ou `ruff format .`) |
 
 ### CI no GitHub
 
