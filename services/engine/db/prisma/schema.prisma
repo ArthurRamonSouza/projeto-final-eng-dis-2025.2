@@ -1,0 +1,109 @@
+generator client {
+	provider = "prisma-client-js"
+}
+
+datasource db {
+	provider = "postgresql"
+}
+
+/// 6.1 — Anúncios
+model Ad {
+	id             String   @id @db.VarChar(255)
+	title          String
+	advertiserName String   @map("advertiser_name")
+	status         String
+	createdAt      DateTime @default(now()) @map("created_at")
+
+	contents            AdContent[]
+	staticChallenges    StaticChallenge[]
+	generationJobs      GenerationJob[]
+	generationResults   GenerationResult[]
+	consumptionLogs     ChallengeConsumptionLog[]
+
+	@@map("ads")
+}
+
+/// 6.2 — Conteúdos do anúncio
+model AdContent {
+	id          String   @id @default(cuid()) @db.VarChar(36)
+	adId        String   @map("ad_id")
+	contentType String   @map("content_type")
+	contentText String   @map("content_text") @db.Text
+	createdAt   DateTime @default(now()) @map("created_at")
+
+	ad Ad @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+	@@index([adId])
+	@@map("ad_contents")
+}
+
+/// 6.3 — Desafios estáticos (fallback / pool estático)
+model StaticChallenge {
+	id            String   @id @default(cuid())
+	adId          String   @map("ad_id")
+	type          String
+	question      String   @db.Text
+	optionsJson   Json     @map("options_json")
+	correctAnswer String   @map("correct_answer")
+	source        String   @default("static")
+	status        String
+	createdAt     DateTime @default(now()) @map("created_at")
+
+	ad              Ad                        @relation(fields: [adId], references: [id], onDelete: Cascade)
+	consumptionLogs ChallengeConsumptionLog[]
+
+	@@index([adId])
+	@@map("static_challenges")
+}
+
+/// 6.4 — Jobs de geração (fila / BullMQ pode espelhar este registro)
+model GenerationJob {
+	jobId          String   @id @default(cuid()) @map("job_id")
+	adId           String   @map("ad_id")
+	requestedCount Int      @map("requested_count")
+	reason         String?
+	status         String
+	createdAt      DateTime @default(now()) @map("created_at")
+	updatedAt      DateTime @updatedAt @map("updated_at")
+
+	ad      Ad                 @relation(fields: [adId], references: [id], onDelete: Cascade)
+	results GenerationResult[]
+
+	@@index([adId])
+	@@map("generation_jobs")
+}
+
+/// 6.5 — Resultados por job de geração
+model GenerationResult {
+	id             String   @id @default(cuid())
+	jobId          String   @map("job_id")
+	adId           String   @map("ad_id")
+	requestedCount Int      @map("requested_count")
+	generatedCount Int      @map("generated_count")
+	status         String
+	errorMessage   String?  @map("error_message") @db.Text
+	createdAt      DateTime @default(now()) @map("created_at")
+
+	job GenerationJob @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+	ad  Ad            @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+	@@index([jobId])
+	@@index([adId])
+	@@map("generation_results")
+}
+
+/// 6.6 — Log opcional de consumo de desafio
+model ChallengeConsumptionLog {
+	id          String   @id @default(cuid())
+	challengeId String   @map("challenge_id")
+	adId        String   @map("ad_id")
+	source      String
+	consumedAt  DateTime @map("consumed_at")
+
+	challenge StaticChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+	ad        Ad              @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+	@@index([challengeId])
+	@@index([adId])
+	@@map("challenge_consumption_logs")
+}

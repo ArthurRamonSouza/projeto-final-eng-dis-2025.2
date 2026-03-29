@@ -1,13 +1,58 @@
+# Variáveis de ambiente e segredos
 .env
+.env.*
+!.env.example
+
+# Node / pnpm (services/engine, services/shared, etc.)
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build e artefatos TypeScript
+dist/
+build/
+services/engine/src/generated/
+
+*.tsbuildinfo
+
+# Python (services/ai-worker e futuros serviços)
 .venv/
 venv/
-node_modules/
-.ruff_cache/
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.egg-info/
-dist/
-build/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Testes / cobertura (Node)
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.idea/
+*.iml
+*.code-workspace
+
