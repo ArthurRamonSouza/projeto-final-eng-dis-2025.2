@@ -5,6 +5,7 @@ import { healthService } from "../services/health.service.js";
 export interface HealthController {
     liveness: RequestHandler<ParamsDictionary>;
     dependencies: RequestHandler<ParamsDictionary>;
+    redisPoolCircuit: RequestHandler<ParamsDictionary>;
 }
 
 export const healthController: HealthController = {
@@ -15,5 +16,9 @@ export const healthController: HealthController = {
     dependencies: async (_req, res) => {
         const result = await healthService.getDependencies();
         res.json(result);
+    },
+
+    redisPoolCircuit: async (_req, res) => {
+        res.json(healthService.getRedisPoolCircuit());
     },
 };

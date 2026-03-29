@@ -46,4 +46,14 @@ describe("HealthController (rotas /health)", () => {
         expect(res.body.dependencies.postgres).toBe("ok");
         expect(res.body.dependencies.redis).toBe("error");
     });
+
+    it("GET /health/redis-pool-circuit — estado do circuit breaker do pool", async () => {
+        const app = await createApp();
+        const res = await request(app).get("/health/redis-pool-circuit");
+        expect(res.status).toBe(200);
+        expect(res.body.service).toBe("engine");
+        expect(["open", "half_open", "closed"]).toContain(
+            res.body.redis_challenge_pool_circuit,
+        );
+    });
 });

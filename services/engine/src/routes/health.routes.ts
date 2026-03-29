@@ -6,3 +6,7 @@ export const healthRouter: Router = Router();
 
 healthRouter.get("/", asyncHandler(healthController.liveness));
 healthRouter.get("/dependencies", asyncHandler(healthController.dependencies));
+healthRouter.get(
+    "/redis-pool-circuit",
+    asyncHandler(healthController.redisPoolCircuit),
+);

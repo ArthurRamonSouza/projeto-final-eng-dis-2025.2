@@ -1,7 +1,19 @@
+import { getRedisPoolCircuitState } from "../lib/redis-pool-circuit.js";
 import { prisma } from "../lib/prisma.js";
 import { redis } from "../lib/redis.js";
 
 type DepStatus = "ok" | "error";
+
+export type RedisPoolCircuitApiState = "open" | "half_open" | "closed";
+
+function mapPoolCircuitToApi(
+    state: ReturnType<typeof getRedisPoolCircuitState>,
+): RedisPoolCircuitApiState {
+    if (state === "halfOpen") {
+        return "half_open";
+    }
+    return state;
+}
 
 async function checkPostgres(): Promise<DepStatus> {
     try {
@@ -41,6 +53,13 @@ export const healthService = {
                 redis: redisStatus,
                 postgres,
             },
+        };
+    },
+
+    getRedisPoolCircuit() {
+        return {
+            service: "engine" as const,
+            redis_challenge_pool_circuit: mapPoolCircuitToApi(getRedisPoolCircuitState()),
         };
     },
 };
