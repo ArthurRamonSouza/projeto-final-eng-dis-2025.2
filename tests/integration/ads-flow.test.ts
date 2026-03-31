@@ -65,7 +65,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
     });
   });
 
-  describe("Passo 2: POST /ads — caminho feliz", () => {
+  describe("Passo 2: POST /ads — payloads inválidos", () => {
     it("cria anúncio e retorna 201 com todos os campos obrigatórios", async () => {
       const { status, body } = await postJson("/ads", {
         title: "Teste do Produto X",
@@ -85,9 +85,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
 
       adId = ad.id as string;
     });
-  });
 
-  describe("Passo 2b: POST /ads — payloads inválidos", () => {
     it("payload vazio retorna 400 ou 422", async () => {
       const { status } = await postJson("/ads", {});
       expect([400, 422]).toContain(status);
@@ -103,7 +101,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
     });
   });
 
-  describe("Passo 3: GET /ads — listagem", () => {
+  describe("Passo 3: GET /ads — listagem e GET /ads/id-inexistente/challenge", () => {
     let listBody: Record<string, unknown>;
 
     beforeAll(async () => {
@@ -133,9 +131,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
       expect(ad!.status).toBe("active");
       expect(ad!.advertiser_name).toBeDefined();
     });
-  });
 
-  describe("Passo 3b: GET /ads/id-inexistente/challenge", () => {
     it("retorna 404 para adId que não existe", async () => {
       const res = await fetch(`${BASE_URL}/ads/ad_0000000000000000/challenge`);
       expect(res.status).toBe(404);
@@ -168,6 +164,88 @@ describe("Integração — Fluxo ponta a ponta", () => {
       expect(body.pool_size as number).toBeGreaterThanOrEqual(0);
       expect(body.pool_min).toBeDefined();
       expect(body.pool_target).toBeDefined();
+    });
+  });
+
+  describe("Passo 5: GET /ads/:adId/challenge — com retry", () => {
+    beforeAll(() => {
+      if (!adId) throw new Error("adId não definido — Passo 2 falhou");
+    });
+
+    it("retorna 200 com desafio válido após o worker processar o job inicial", async () => {
+      const maxRetries = Number(process.env.CHALLENGE_MAX_RETRIES ?? 6);
+      const retryDelaySec = Number(process.env.CHALLENGE_RETRY_SEC ?? 5);
+
+      let lastStatus = 0;
+      let body: Record<string, unknown> | null = null;
+
+      for (let i = 0; i < maxRetries; i++) {
+        const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
+        lastStatus = res.status;
+        if (res.status === 200) {
+          body = (await res.json()) as Record<string, unknown>;
+          break;
+        }
+        if (i < maxRetries - 1) {
+          await sleep(retryDelaySec * 1000);
+        }
+      }
+
+      expect(lastStatus).toBe(200);
+
+      if (!body) return;
+
+      const challenge = body.challenge as Record<string, unknown>;
+      expect(typeof challenge.question).toBe("string");
+      expect((challenge.question as string).length).toBeGreaterThan(0);
+      expect(Array.isArray(challenge.options)).toBe(true);
+      expect((challenge.options as unknown[]).length).toBeGreaterThanOrEqual(2);
+      expect(["ai", "static"]).toContain(challenge.source);
+      expect(body.fallback_used).toBeDefined();
+    }, 90_000);
+  });
+
+  describe("Passo 6: POST /ads/:adId/refill", () => {
+    beforeAll(() => {
+      if (!adId) throw new Error("adId não definido — Passo 2 falhou");
+    });
+
+    it("dispara refill manual e retorna 201 com job 'pending'", async () => {
+      const { status, body } = await postJson(`/ads/${adId}/refill`, {
+        requested_count: 3,
+      });
+      expect(status).toBe(201);
+
+      const job = body.job as Record<string, unknown>;
+      expect(job.job_id).toBeTruthy();
+      expect(job.ad_id).toBe(adId);
+      expect(job.requested_count).toBe(3);
+      expect(job.reason).toBe("manual_refill");
+      expect(job.status).toBe("pending");
+    });
+
+    it("requested_count negativo retorna 400 ou 422", async () => {
+      const { status } = await postJson(`/ads/${adId}/refill`, {
+        requested_count: -1,
+      });
+      expect([400, 422]).toContain(status);
+    });
+
+    it("pool-status indica refill_in_progress após refill manual", async () => {
+      const { body } = await getJson(`/ads/${adId}/pool-status`);
+      expect(body.refill_in_progress).toBe(true);
+    });
+  });
+
+  describe("Passo 7: GET /health/dependencies", () => {
+    it("retorna 200 com redis e postgres 'ok'", async () => {
+      const { status, body } = await getJson("/health/dependencies");
+      expect(status).toBe(200);
+      expect(body.status).toBe("ok");
+
+      const deps = body.dependencies as Record<string, string>;
+      expect(deps.redis).toBe("ok");
+      expect(deps.postgres).toBe("ok");
     });
   });
 });
