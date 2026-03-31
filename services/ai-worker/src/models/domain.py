@@ -7,10 +7,6 @@ from db.session import Base
 
 
 class AdContent(Base):
-    """
-    Tabela que armazena o conteúdo textual do anúncio que servirá de base para a IA.
-    """
-
     __tablename__ = "ad_contents"
 
     id = Column(String, primary_key=True, index=True)
@@ -20,11 +16,23 @@ class AdContent(Base):
     created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
 
 
-class GenerationResult(Base):
-    """
-    Tabela de log persistida pelo worker para registrar o sucesso ou falha da geração de desafios.
-    """
+class GenerationJob(Base):
+    __tablename__ = "generation_jobs"
 
+    job_id = Column(String, primary_key=True, index=True)
+    ad_id = Column(String, index=True)
+    requested_count = Column(Integer)
+    reason = Column(String, nullable=True)
+    status = Column(String)
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class GenerationResult(Base):
     __tablename__ = "generation_results"
 
     id = Column(String, primary_key=True, index=True)
