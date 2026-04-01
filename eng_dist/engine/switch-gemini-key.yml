@@ -1,0 +1,21 @@
+info:
+  name: switch-gemini-key
+  type: http
+  seq: 10
+
+http:
+  method: POST
+  url: "{{baseUrlEngine}}/health/toggle-ai"
+  body:
+    type: json
+    data: |-
+      {
+        "enabled": false
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

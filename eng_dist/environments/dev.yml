@@ -1,0 +1,6 @@
+name: dev
+variables:
+  - name: baseUrlEngine
+    value: http://localhost:8000
+  - name: baseUrlWorker
+    value: http://localhost:8001

@@ -1,0 +1,24 @@
+info:
+  name: post-ads
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrlEngine}}/ads"
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Campanha Tênis Runner X",
+        "advertiser_name": "Marca X",
+        "content_type": "transcript",
+        "content_text": "O vídeo apresenta o tênis Runner X destacando conforto, amortecimento e leveza."
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
