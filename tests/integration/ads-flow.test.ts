@@ -65,7 +65,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
     });
   });
 
-  describe("Passo 2: POST /ads — payloads inválidos", () => {
+  describe("Passo 2: POST /ads", () => {
     it("cria anúncio e retorna 201 com todos os campos obrigatórios", async () => {
       const { status, body } = await postJson("/ads", {
         title: "Teste do Produto X",
@@ -82,6 +82,10 @@ describe("Integração — Fluxo ponta a ponta", () => {
       expect(ad.title).toBe("Teste do Produto X");
       expect(ad.status).toBe("active");
       expect(body.initial_refill_requested).toBe(true);
+
+      const content = body.content as Record<string, unknown>;
+      expect(content.id).toBeDefined();
+      expect(content.content_type).toBe("text");
 
       adId = ad.id as string;
     });
@@ -132,9 +136,26 @@ describe("Integração — Fluxo ponta a ponta", () => {
       expect(ad!.advertiser_name).toBeDefined();
     });
 
-    it("retorna 404 para adId que não existe", async () => {
+    it("retorna 404 para adId que não existe em /challenge", async () => {
       const res = await fetch(`${BASE_URL}/ads/ad_0000000000000000/challenge`);
       expect(res.status).toBe(404);
+    });
+
+    it("retorna 404 para adId que não existe em GET /ads/:adId", async () => {
+      const { status } = await getJson("/ads/ad_0000000000000000");
+      expect(status).toBe(404);
+    });
+
+    it("retorna 404 para adId que não existe em GET /ads/:adId/pool-status", async () => {
+      const { status } = await getJson("/ads/ad_0000000000000000/pool-status");
+      expect(status).toBe(404);
+    });
+
+    it("retorna 404 para adId que não existe em POST /ads/:adId/refill", async () => {
+      const { status } = await postJson("/ads/ad_0000000000000000/refill", {
+        requested_count: 3,
+      });
+      expect(status).toBe(404);
     });
   });
 
@@ -198,10 +219,19 @@ describe("Integração — Fluxo ponta a ponta", () => {
       const challenge = body.challenge as Record<string, unknown>;
       expect(typeof challenge.question).toBe("string");
       expect((challenge.question as string).length).toBeGreaterThan(0);
+      expect(challenge.type).toBe("multiple_choice");
       expect(Array.isArray(challenge.options)).toBe(true);
-      expect((challenge.options as unknown[]).length).toBeGreaterThanOrEqual(2);
+      expect((challenge.options as unknown[]).length).toBe(4);
       expect(["ai", "static"]).toContain(challenge.source);
-      expect(body.fallback_used).toBeDefined();
+
+      if (challenge.source === "ai") {
+        expect(body.fallback_used).toBe(false);
+      } else {
+        expect(body.fallback_used).toBe(true);
+      }
+
+      expect(typeof body.pool_size_after_consume).toBe("number");
+      expect(body.refill_requested).toBeDefined();
     }, 90_000);
   });
 

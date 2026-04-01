@@ -6,9 +6,10 @@ const COMPOSE_PROJECT = process.env.COMPOSE_PROJECT ?? "projeto-final-eng-dis";
 
 const REDIS_CONTAINER = `${COMPOSE_PROJECT}-redis-1`;
 const WORKER_CONTAINER = `${COMPOSE_PROJECT}-ai-worker-1`;
+const POSTGRES_CONTAINER = `${COMPOSE_PROJECT}-postgres-1`;
 
-function exec(cmd: string): void {
-  execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+function exec(cmd: string): string {
+  return execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -20,9 +21,7 @@ async function waitForApi(retries = 15, delaySec = 2): Promise<void> {
     try {
       const res = await fetch(`${BASE_URL}/health`);
       if (res.ok) return;
-    } catch {
-      //nn ttem ainda
-    }
+    } catch {}
     await sleep(delaySec * 1000);
   }
   throw new Error(
@@ -49,12 +48,26 @@ async function createTestAd(): Promise<string> {
   return body.ad.id;
 }
 
+function seedStaticChallenges(adId: string, count = 3): void {
+  for (let i = 0; i < count; i++) {
+    const id = `st_res_${adId.slice(3, 11)}_${i}`;
+    const sql = `INSERT INTO static_challenges (id, ad_id, type, question, options_json, correct_answer, source, status)
+      VALUES ('${id}', '${adId}', 'multiple_choice', 'Pergunta fallback ${i + 1} sobre o anúncio?',
+      '["Opção A","Opção B","Opção C","Opção D"]', 'Opção A', 'static', 'active')
+      ON CONFLICT (id) DO NOTHING;`;
+
+    execSync(`docker exec -i ${POSTGRES_CONTAINER} psql -U app -d app`, {
+      input: sql,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  }
+}
+
 function ensureContainerRunning(name: string): void {
   try {
     exec(`docker start ${name}`);
-  } catch {
-    // TODO
-  }
+  } catch {}
 }
 
 beforeAll(async () => {
@@ -67,29 +80,48 @@ describe("Cenário 1: Pool esgotado → fallback estático", () => {
   beforeAll(async () => {
     adId = await createTestAd();
 
+    seedStaticChallenges(adId);
+
     exec(
       `docker exec ${REDIS_CONTAINER} redis-cli DEL orchestrator:challenge_pool:${adId}`,
     );
     await sleep(1000);
   });
 
-  it("GET /ads/:adId/challenge com pool vazio retorna 200 (fallback) ou 404 (sem seed de desafios estáticos)", async () => {
+  it("GET /ads/:adId/challenge com pool vazio retorna 200 via fallback estático", async () => {
     const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
 
-    expect([200, 404]).toContain(res.status);
-  });
+    expect(res.status).toBe(200);
 
-  it("se retornar 200, fallback_used deve ser true e source deve ser 'static'", async () => {
-    const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
-    if (res.status !== 200) {
-      return;
-    }
     const body = (await res.json()) as {
       fallback_used: boolean;
-      challenge: { source: string };
+      challenge: {
+        source: string;
+        type: string;
+        question: string;
+        options: string[];
+      };
+      pool_size_after_consume: number;
     };
+
     expect(body.fallback_used).toBe(true);
     expect(body.challenge.source).toBe("static");
+    expect(body.challenge.type).toBe("multiple_choice");
+    expect(typeof body.challenge.question).toBe("string");
+    expect(body.challenge.options).toHaveLength(4);
+    expect(body.pool_size_after_consume).toBe(0);
+  });
+
+  it("múltiplas requisições seguidas com pool vazio retornam fallback sem erro", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        fetch(`${BASE_URL}/ads/${adId}/challenge`).then((r) => r.status),
+      ),
+    );
+
+    for (const status of results) {
+      expect(status).toBe(200);
+    }
   });
 });
 
@@ -137,6 +169,28 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
     const healthBody = (await healthRes.json()) as { status: string };
     expect(healthBody.status).toBe("ok");
   }, 30_000);
+
+  it("desafios estáticos continuam sendo servidos com worker offline", async () => {
+    const adId = await createTestAd();
+    seedStaticChallenges(adId);
+
+    exec(
+      `docker exec ${REDIS_CONTAINER} redis-cli DEL orchestrator:challenge_pool:${adId}`,
+    );
+
+    exec(`docker stop ${WORKER_CONTAINER}`);
+    await sleep(1000);
+
+    const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      fallback_used: boolean;
+      challenge: { source: string };
+    };
+    expect(body.fallback_used).toBe(true);
+    expect(body.challenge.source).toBe("static");
+  }, 30_000);
 });
 
 describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperação", () => {
@@ -144,6 +198,8 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
 
   beforeAll(async () => {
     adId = await createTestAd();
+
+    seedStaticChallenges(adId);
   });
 
   afterEach(async () => {
@@ -156,13 +212,27 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
     await sleep(5000);
   });
 
-  it("GET /challenge com Redis offline retorna 200 (fallback PostgreSQL) ou 404 (sem seed)", async () => {
+  it("GET /challenge com Redis offline retorna 200 via fallback PostgreSQL", async () => {
     exec(`docker stop ${REDIS_CONTAINER}`);
     await sleep(3000);
 
     const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
 
-    expect([200, 404]).toContain(res.status);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      fallback_used: boolean;
+      challenge: {
+        source: string;
+        type: string;
+        question: string;
+        options: string[];
+      };
+    };
+    expect(body.fallback_used).toBe(true);
+    expect(body.challenge.source).toBe("static");
+    expect(body.challenge.type).toBe("multiple_choice");
+    expect(body.challenge.options).toHaveLength(4);
   }, 30_000);
 
   it("GET /health/dependencies mostra redis='error' e postgres='ok' com Redis offline", async () => {
