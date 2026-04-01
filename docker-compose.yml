@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
       POSTGRES_DB: ${POSTGRES_DB:-app}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Expõe a porta 5433 para o host local
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,8 +35,10 @@ services:
     ports:
       - "${ENGINE_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/app}
+      # FORÇA A URL INTERNA DO DOCKER (Ignora o localhost do .env)
+      DATABASE_URL: postgresql://app:app@postgres:5432/app
       REDIS_QUEUE_URL: ${REDIS_QUEUE_URL:-redis://redis:6379/0}
+      POOL_KEY_PREFIX: ${POOL_KEY_PREFIX:-pool:ad:}
       POOL_MIN: ${POOL_MIN:-3}
       POOL_TARGET: ${POOL_TARGET:-10}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
@@ -51,10 +54,15 @@ services:
   ai-worker:
     build:
       context: ./services/ai-worker
+    ports:
+      - "${AI_WORKER_PORT:-8001}:8001"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/app}
+      # FORÇA A URL INTERNA DO DOCKER (Ignora o localhost do .env)
+      DATABASE_URL: postgresql://app:app@postgres:5432/app
       REDIS_QUEUE_URL: ${REDIS_QUEUE_URL:-redis://redis:6379/0}
+      POOL_KEY_PREFIX: ${POOL_KEY_PREFIX:-pool:ad:}
       AI_WORKER_INTERVAL_SEC: "${AI_WORKER_INTERVAL_SEC:-30}"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-"Sua API key aqui"}
     depends_on:
       postgres:
         condition: service_healthy

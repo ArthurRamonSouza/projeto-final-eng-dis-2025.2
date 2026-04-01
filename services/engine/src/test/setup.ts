@@ -32,7 +32,7 @@ vi.mock("../lib/redis.js", () => ({
         ping: vi.fn(),
         eval: vi.fn().mockResolvedValue([1, 59]),
     },
-    poolKey: (adId: string) => `orchestrator:challenge_pool:${adId}`,
+    poolKey: (adId: string) => `pool:ad:${adId}`,
 }));
 
 import { prisma } from "../lib/prisma.js";

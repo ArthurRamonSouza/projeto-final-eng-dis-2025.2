@@ -1,3 +1,4 @@
+import os
 import uuid
 from collections.abc import Callable
 
@@ -10,7 +11,7 @@ from schemas.contracts import Challenge, LLMResponse
 from services.repository import get_ad_content, save_generation_result
 
 load_dotenv()
-client = genai.Client()
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 def build_prompt(content_text: str, requested_count: int) -> str:
