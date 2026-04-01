@@ -82,9 +82,7 @@ describe("Cenário 1: Pool esgotado → fallback estático", () => {
 
     seedStaticChallenges(adId);
 
-    exec(
-      `docker exec ${REDIS_CONTAINER} redis-cli DEL orchestrator:challenge_pool:${adId}`,
-    );
+    exec(`docker exec ${REDIS_CONTAINER} redis-cli DEL pool:ad:${adId}`);
     await sleep(1000);
   });
 
@@ -174,9 +172,7 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
     const adId = await createTestAd();
     seedStaticChallenges(adId);
 
-    exec(
-      `docker exec ${REDIS_CONTAINER} redis-cli DEL orchestrator:challenge_pool:${adId}`,
-    );
+    exec(`docker exec ${REDIS_CONTAINER} redis-cli DEL pool:ad:${adId}`);
 
     exec(`docker stop ${WORKER_CONTAINER}`);
     await sleep(1000);

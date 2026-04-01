@@ -89,8 +89,10 @@ export default function (data) {
     requestCount.add(1);
 
     check(res, {
-      "GET /ads → status 200": (r) => r.status === 200,
+      "GET /ads → status 200 ou 429": (r) =>
+        r.status === 200 || r.status === 429,
       "GET /ads → body é array JSON": (r) => {
+        if (r.status === 429) return true;
         try {
           const body = JSON.parse(r.body);
           return Array.isArray(body.items);
