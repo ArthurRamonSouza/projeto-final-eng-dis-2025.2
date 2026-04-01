@@ -7,6 +7,6 @@ export default tseslint.config(
     ...tseslint.configs.recommended,
     eslintConfigPrettier,
     {
-        ignores: ["node_modules/**", "load-test.js"],
+        ignores: ["node_modules/**", "*.js"],
     },
 );

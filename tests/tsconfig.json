@@ -1,18 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ES2023",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "typeRoots": ["../services/engine/node_modules/@types"],
-    "paths": {
-      "vitest": ["../services/engine/node_modules/vitest"],
-      "vitest/*": ["../services/engine/node_modules/vitest/*"]
-    }
-  },
-  "include": ["./**/*.ts"]
+    "compilerOptions": {
+        "target": "ES2023",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "baseUrl": ".",
+        "typeRoots": ["../services/engine/node_modules/@types"],
+        "paths": {
+            "vitest": ["../services/engine/node_modules/vitest"],
+            "vitest/*": ["../services/engine/node_modules/vitest/*"]
+        }
+    },
+    "include": ["./**/*.ts"]
 }
