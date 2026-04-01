@@ -229,21 +229,29 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
         ensureContainerRunning(WORKER_CONTAINER);
         await waitForWorker(10, 1);
 
-        // Usa um ad_id que não existe no banco para forçar falha de geração
-        const fakeAdId = "ad_0000000000000000";
+        // Insere um ad diretamente na tabela 'ads' SEM ad_contents correspondente.
+        // O worker chama get_ad_content() → retorna None → salva status='failed' e lança ValueError.
+        // Esta estratégia funciona independentemente da GEMINI_API_KEY estar configurada ou não.
+        const noContentAdId = `ad_noctnt${Date.now().toString(16).slice(-8)}`;
+        execSync(`docker exec -i ${POSTGRES_CONTAINER} psql -U app -d app`, {
+            input: `INSERT INTO ads (id, title, advertiser_name, status, created_at) VALUES ('${noContentAdId}', 'Ad sem conteudo', 'Tester', 'active', NOW());`,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+        });
         const jobId = `test_fail_${Date.now()}`;
+        console.log(`[Fluxo D] adId sem conteúdo: ${noContentAdId}`);
 
         const res = await fetch(`${AI_WORKER_URL}/internal/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                ad_id: fakeAdId,
+                ad_id: noContentAdId,
                 job_id: jobId,
                 requested_count: 1,
             }),
         });
 
-        // Worker retorna 500 quando a geração falha
+        // Worker retorna 500 quando a geração falha (conteúdo não encontrado)
         console.log(
             `[Fluxo D] POST /internal/generate respondeu HTTP ${res.status}`,
         );
@@ -284,13 +292,23 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
     it("GET /challenge com Redis offline retorna 200 via fallback PostgreSQL", async () => {
         exec(`docker stop ${REDIS_CONTAINER}`);
         console.log(`[Cenário 3] Redis parado`);
-        await sleep(3000);
+        // Aguarda ioredis detectar a queda + circuit breaker estabilizar
+        await sleep(6000);
 
-        const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
+        // Tenta até 3 vezes: primeira pode demorar enquanto ioredis esgota as retentativas
+        let res: Response | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
+            console.log(
+                `[Cenário 3] tentativa ${attempt} → HTTP ${res.status}`,
+            );
+            if (res.status === 200) break;
+            await sleep(2000);
+        }
 
-        expect(res.status).toBe(200);
+        expect(res!.status).toBe(200);
 
-        const body = (await res.json()) as {
+        const body = (await res!.json()) as {
             fallback_used: boolean;
             challenge: {
                 source: string;
