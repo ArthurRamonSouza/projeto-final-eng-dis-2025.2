@@ -92,6 +92,24 @@ async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
     async with AsyncSessionLocal() as session:
+        # kill switch para desabilitar geração de desafios via Gemini
+        is_enabled = await redis_client.get("feature_flag:ai_enabled")
+        if is_enabled == b"false":
+            await create_or_update_generation_job(
+                session=session,
+                job_id=job_id,
+                ad_id=ad_id,
+                requested_count=requested_count,
+                status="failed",
+                reason=str(payload.get("reason") or "refill"),
+            )
+            last_job_status = {
+                "job_id": job_id,
+                "status": "failed",
+                "error": "Kill Switch ativado: A API do Gemini foi desligada manualmente.",
+            }
+            raise RuntimeError("Kill Switch ativado: A API do Gemini foi desligada manualmente.")
+
         await create_or_update_generation_job(
             session=session,
             job_id=job_id,
