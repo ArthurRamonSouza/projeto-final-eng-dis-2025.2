@@ -1,0 +1,22 @@
+info:
+  name: generate
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:8001/internal/generate
+  body:
+    type: json
+    data: |-
+      {
+        "ad_id": "ad_76a4d4593e5630fc",
+        "requested_count": 3
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

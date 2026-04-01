@@ -10,3 +10,4 @@ healthRouter.get(
     "/redis-pool-circuit",
     asyncHandler(healthController.redisPoolCircuit),
 );
+healthRouter.post("/toggle-ai", asyncHandler(healthController.toggleAi));

@@ -1,0 +1,18 @@
+info:
+  name: adId-refill
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{baseUrlEngine}}/ads/ad_fa84c9214872c555/refill"
+  body:
+    type: json
+    data: '{ "requested_count": 5 }'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

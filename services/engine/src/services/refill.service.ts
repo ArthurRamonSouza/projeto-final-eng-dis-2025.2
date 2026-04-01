@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { redis } from "../lib/redis.js";
 import { generationJobRepository } from "../repositories/generation-job.repository.js";
 
 /**
@@ -20,11 +21,24 @@ export async function evaluateRefill(
     }
 
     const gap = Math.max(1, env.POOL_TARGET - poolSizeAfterConsume);
-    await generationJobRepository.createPending({
+    const job = await generationJobRepository.createPending({
         adId,
         requestedCount: gap,
         reason: "refill",
     });
+
+    await redis.xadd(
+        env.REFILL_STREAM_KEY,
+        "*",
+        "job_id",
+        job.jobId,
+        "ad_id",
+        adId,
+        "requested_count",
+        gap,
+        "reason",
+        "refill",
+    );
 
     return { refillRequested: true, newJobCreated: true };
 }

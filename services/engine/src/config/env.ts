@@ -9,6 +9,7 @@ function required(name: string): string {
 export const env = {
     REDIS_QUEUE_URL: required("REDIS_QUEUE_URL"),
     POOL_KEY_PREFIX: process.env.POOL_KEY_PREFIX ?? "pool:ad:",
+    REFILL_STREAM_KEY: process.env.REFILL_STREAM_KEY ?? "stream:refill_jobs",
     POOL_MIN: Number(process.env.POOL_MIN ?? 3),
     POOL_TARGET: Number(process.env.POOL_TARGET ?? 10),
 
