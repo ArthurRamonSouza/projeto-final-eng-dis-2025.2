@@ -1,6 +1,32 @@
+import { execSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
+const COMPOSE_PROJECT = process.env.COMPOSE_PROJECT ?? "projeto-final-eng-dis";
+const POSTGRES_CONTAINER = `${COMPOSE_PROJECT}-postgres-1`;
+
+/**
+ * Insere desafios estáticos no PostgreSQL para garantir que o fallback
+ * funcione independentemente do worker AI (ex.: chave Gemini não configurada).
+ */
+function seedStaticChallenges(adId: string, count = 3): void {
+    for (let i = 0; i < count; i++) {
+        const id = `st_int_${adId.slice(3, 11)}_${i}`;
+        const sql = `INSERT INTO static_challenges (id, ad_id, type, question, options_json, correct_answer, source, status)
+      VALUES ('${id}', '${adId}', 'multiple_choice', 'Pergunta de integração ${i + 1} sobre o produto?',
+      '["Opção A","Opção B","Opção C","Opção D"]', 'Opção A', 'static', 'active')
+      ON CONFLICT (id) DO NOTHING;`;
+
+        execSync(`docker exec -i ${POSTGRES_CONTAINER} psql -U app -d app`, {
+            input: sql,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+        });
+    }
+    console.log(
+        `[seed] ${count} desafio(s) estático(s) inseridos para adId=${adId}`,
+    );
+}
 
 async function waitForApi(retries = 15, delaySec = 2): Promise<void> {
     let lastError: unknown;
@@ -88,6 +114,19 @@ describe("Integração — Fluxo ponta a ponta", () => {
             expect(content.content_type).toBe("text");
 
             adId = ad.id as string;
+        });
+
+        it("Fluxo A — job de refill inicial aparece em generation_jobs com status 'pending'", () => {
+            if (!adId) throw new Error("adId não definido — Passo 2 falhou");
+            const output = execSync(
+                `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT COUNT(*) FROM generation_jobs WHERE ad_id = '${adId}' AND status = 'pending'"`,
+                { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+            ).trim();
+            const count = parseInt(output.trim(), 10);
+            console.log(
+                `[Fluxo A] adId=${adId} → jobs pending no DB: ${count}`,
+            );
+            expect(count).toBeGreaterThanOrEqual(1);
         });
 
         it("payload vazio retorna 400 ou 422", async () => {
@@ -198,6 +237,8 @@ describe("Integração — Fluxo ponta a ponta", () => {
     describe("Passo 5: GET /ads/:adId/challenge — com retry", () => {
         beforeAll(() => {
             if (!adId) throw new Error("adId não definido — Passo 2 falhou");
+            // Garante desafios estáticos como fallback caso o worker AI não tenha preenchido o pool
+            seedStaticChallenges(adId);
         });
 
         it("retorna 200 com desafio válido após o worker processar o job inicial", async () => {
@@ -206,9 +247,12 @@ describe("Integração — Fluxo ponta a ponta", () => {
 
             let lastStatus = 0;
             let body: Record<string, unknown> | null = null;
+            let elapsedMs = 0;
 
             for (let i = 0; i < maxRetries; i++) {
+                const start = Date.now();
                 const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
+                elapsedMs = Date.now() - start;
                 lastStatus = res.status;
                 if (res.status === 200) {
                     body = (await res.json()) as Record<string, unknown>;
@@ -219,6 +263,9 @@ describe("Integração — Fluxo ponta a ponta", () => {
                 }
             }
 
+            console.log(
+                `[Passo 5] HTTP ${lastStatus} | source=${(body?.challenge as Record<string, unknown>)?.source} | fallback_used=${body?.fallback_used} | elapsedMs=${elapsedMs}`,
+            );
             expect(lastStatus).toBe(200);
 
             if (!body) return;
@@ -233,8 +280,16 @@ describe("Integração — Fluxo ponta a ponta", () => {
 
             if (challenge.source === "ai") {
                 expect(body.fallback_used).toBe(false);
+                // Fluxo B: pool cheio → entrega abaixo de 50 ms
+                console.log(
+                    `[Fluxo B] Entrega AI com pool cheio: ${elapsedMs}ms (limite: 50ms)`,
+                );
+                expect(elapsedMs).toBeLessThan(50);
             } else {
                 expect(body.fallback_used).toBe(true);
+                console.log(
+                    `[Fluxo C] Entrega fallback estático: ${elapsedMs}ms`,
+                );
             }
 
             expect(typeof body.pool_size_after_consume).toBe("number");

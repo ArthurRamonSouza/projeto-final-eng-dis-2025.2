@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
 const COMPOSE_PROJECT = process.env.COMPOSE_PROJECT ?? "projeto-final-eng-dis";
+const AI_WORKER_URL = process.env.AI_WORKER_URL ?? "http://localhost:8001";
 
 const REDIS_CONTAINER = `${COMPOSE_PROJECT}-redis-1`;
 const WORKER_CONTAINER = `${COMPOSE_PROJECT}-ai-worker-1`;
@@ -31,6 +32,21 @@ async function waitForApi(retries = 15, delaySec = 2): Promise<void> {
     }
     throw new Error(
         `API não disponível em ${BASE_URL}. Execute: docker compose up -d`,
+    );
+}
+
+async function waitForWorker(retries = 10, delaySec = 2): Promise<void> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(`${AI_WORKER_URL}/health`);
+            if (res.ok) return;
+        } catch {
+            // Worker not yet available, retry
+        }
+        await sleep(delaySec * 1000);
+    }
+    throw new Error(
+        `Worker não disponível em ${AI_WORKER_URL}. Verifique se docker compose up está rodando.`,
     );
 }
 
@@ -109,6 +125,9 @@ describe("Cenário 1: Pool esgotado → fallback estático", () => {
             pool_size_after_consume: number;
         };
 
+        console.log(
+            `[Cenário 1] adId=${adId} | source=${body.challenge.source} | fallback_used=${body.fallback_used} | pool_size_after_consume=${body.pool_size_after_consume}`,
+        );
         expect(body.fallback_used).toBe(true);
         expect(body.challenge.source).toBe("static");
         expect(body.challenge.type).toBe("multiple_choice");
@@ -145,8 +164,10 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
 
     it("engine aceita refill request e cria job 'pending' mesmo com worker offline; sistema continua saudável", async () => {
         const adId = await createTestAd();
+        console.log(`[Cenário 2] adId criado: ${adId}`);
 
         exec(`docker stop ${WORKER_CONTAINER}`);
+        console.log(`[Cenário 2] Worker parado`);
         await sleep(1000);
 
         const refillRes = await fetch(`${BASE_URL}/ads/${adId}/refill`, {
@@ -168,12 +189,18 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
         expect(refillBody.job.status).toBe("pending");
         expect(refillBody.job.ad_id).toBe(adId);
         expect(refillBody.job.requested_count).toBe(3);
+        console.log(
+            `[Cenário 2] Job criado id=${refillBody.job.job_id} status=${refillBody.job.status}`,
+        );
 
         await sleep(5000);
 
         const healthRes = await fetch(`${BASE_URL}/health`);
         expect(healthRes.status).toBe(200);
         const healthBody = (await healthRes.json()) as { status: string };
+        console.log(
+            `[Cenário 2] Health após 5s: ${JSON.stringify(healthBody)}`,
+        );
         expect(healthBody.status).toBe("ok");
     }, 30_000);
 
@@ -196,6 +223,43 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
         expect(body.fallback_used).toBe(true);
         expect(body.challenge.source).toBe("static");
     }, 30_000);
+
+    it("Fluxo D — worker marca job como 'failed' em generation_results quando geração falha", async () => {
+        // Garante que o worker está no ar e respondendo
+        ensureContainerRunning(WORKER_CONTAINER);
+        await waitForWorker(10, 1);
+
+        // Usa um ad_id que não existe no banco para forçar falha de geração
+        const fakeAdId = "ad_0000000000000000";
+        const jobId = `test_fail_${Date.now()}`;
+
+        const res = await fetch(`${AI_WORKER_URL}/internal/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ad_id: fakeAdId,
+                job_id: jobId,
+                requested_count: 1,
+            }),
+        });
+
+        // Worker retorna 500 quando a geração falha
+        console.log(
+            `[Fluxo D] POST /internal/generate respondeu HTTP ${res.status}`,
+        );
+        expect([500, 503]).toContain(res.status);
+
+        // Verifica que o resultado foi registrado como 'failed' na tabela generation_results
+        const output = execSync(
+            `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT COUNT(*) FROM generation_results WHERE job_id = '${jobId}' AND status = 'failed'"`,
+            { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+        ).trim();
+        const count = parseInt(output.trim(), 10);
+        console.log(
+            `[Fluxo D] jobId=${jobId} → linhas failed em generation_results: ${count}`,
+        );
+        expect(count).toBeGreaterThanOrEqual(1);
+    }, 20_000);
 });
 
 describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperação", () => {
@@ -219,6 +283,7 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
 
     it("GET /challenge com Redis offline retorna 200 via fallback PostgreSQL", async () => {
         exec(`docker stop ${REDIS_CONTAINER}`);
+        console.log(`[Cenário 3] Redis parado`);
         await sleep(3000);
 
         const res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
@@ -234,6 +299,9 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
                 options: string[];
             };
         };
+        console.log(
+            `[Cenário 3] source=${body.challenge.source} | fallback_used=${body.fallback_used}`,
+        );
         expect(body.fallback_used).toBe(true);
         expect(body.challenge.source).toBe("static");
         expect(body.challenge.type).toBe("multiple_choice");
@@ -248,6 +316,7 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
         const body = (await res.json()) as {
             dependencies: { redis: string; postgres: string };
         };
+        console.log(`[Cenário 3 health] ${JSON.stringify(body.dependencies)}`);
         expect(res.status).toBe(200);
         expect(body.dependencies.redis).toBe("error");
         expect(body.dependencies.postgres).toBe("ok");

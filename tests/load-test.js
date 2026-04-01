@@ -8,18 +8,21 @@ const listAdsLatency = new Trend("list_ads_latency", true);
 const challengeLatency = new Trend("challenge_latency", true);
 const httpErrors = new Rate("http_errors");
 const requestCount = new Counter("total_requests");
+const fallbackUsedRate = new Rate("fallback_used_rate");
+const poolSizeTrend = new Trend("pool_size", true);
 
 export const options = {
     stages: [
         { duration: "30s", target: 50 },
-        { duration: "1m", target: 50 },
-        { duration: "15s", target: 0 },
+        { duration: "1m", target: 100 },
+        { duration: "30s", target: 0 },
     ],
     thresholds: {
-        http_req_duration: ["p(95)<500"],
+        http_req_duration: ["p(95)<50"],
         list_ads_latency: ["p(95)<200"],
-        challenge_latency: ["p(95)<400"],
+        challenge_latency: ["p(95)<50"],
         http_errors: ["rate<0.01"],
+        fallback_used_rate: ["rate<1"],
     },
 
     summaryTrendStats: ["p(50)", "p(95)", "p(99)", "avg", "min", "max"],
@@ -187,10 +190,38 @@ export default function (data) {
                     return false;
                 }
             },
+            "GET /ads/:adId/challenge → latência ok (< 50ms)": (r) =>
+                r.timings.duration < 50,
         });
 
         challengeLatency.add(res.timings.duration);
         httpErrors.add(res.status >= 500);
+
+        if (res.status === 200) {
+            try {
+                const body = JSON.parse(res.body);
+                fallbackUsedRate.add(body.fallback_used === true);
+            } catch {
+                // ignore parse errors
+            }
+        }
+    }
+
+    // Coleta tamanho do pool a cada ~10 iterações (amostragem para evitar overhead)
+    if (adId && Math.random() < 0.1) {
+        const poolRes = http.get(`${BASE_URL}/ads/${adId}/pool-status`, {
+            tags: { endpoint: "pool_status" },
+        });
+        if (poolRes.status === 200) {
+            try {
+                const poolBody = JSON.parse(poolRes.body);
+                if (typeof poolBody.pool_size === "number") {
+                    poolSizeTrend.add(poolBody.pool_size);
+                }
+            } catch {
+                // ignore parse errors
+            }
+        }
     }
 
     sleep(Math.random() * 1 + 0.5);
