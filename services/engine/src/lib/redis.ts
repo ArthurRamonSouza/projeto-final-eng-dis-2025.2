@@ -6,5 +6,5 @@ export const redis = new Redis(env.REDIS_QUEUE_URL, {
 });
 
 export function poolKey(adId: string): string {
-    return `orchestrator:challenge_pool:${adId}`;
+    return `${env.POOL_KEY_PREFIX}${adId}`;
 }
