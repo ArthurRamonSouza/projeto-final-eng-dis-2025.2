@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPoolStatus, listAds, triggerRefill } from "../api/ads";
 import { getDependenciesHealth, toggleAI } from "../api/health";
-import type { Ad, DependenciesHealthResponse, PoolStatus } from "../types";
+import { getMetricsSummary } from "../api/metrics";
+import type { Ad, DependenciesHealthResponse, MetricsSummaryResponse, PoolStatus } from "../types";
 import { AdSelector } from "../components/AdSelector";
 import { PoolStatusCard } from "../components/PoolStatusCard";
 import { DependenciesHealthCard } from "../components/DependenciesHealthCard";
@@ -11,9 +12,11 @@ import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
 import { AppButton } from "../components/AppButton";
 import { AIToggleCard } from "../components/AIToggleCard";
+import { MetricsSummaryCard } from "../components/MetricsSummaryCard";
 
 const POOL_AUTO_REFRESH_MS = 5000;
 const HEALTH_AUTO_REFRESH_MS = 10000;
+const METRICS_AUTO_REFRESH_MS = 10000;
 
 function formatLastUpdate(date: Date | null) {
   if (!date) return "—";
@@ -30,10 +33,12 @@ export function StatusPage() {
   const [selectedAdId, setSelectedAdId] = useState("");
   const [poolStatus, setPoolStatus] = useState<PoolStatus | null>(null);
   const [healthData, setHealthData] = useState<DependenciesHealthResponse | null>(null);
+  const [metricsData, setMetricsData] = useState<MetricsSummaryResponse | null>(null);
 
   const [isLoadingAds, setIsLoadingAds] = useState(true);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [isSubmittingRefill, setIsSubmittingRefill] = useState(false);
   const [isTogglingAI, setIsTogglingAI] = useState(false);
 
@@ -41,6 +46,7 @@ export function StatusPage() {
 
   const [lastPoolUpdatedAt, setLastPoolUpdatedAt] = useState<Date | null>(null);
   const [lastHealthUpdatedAt, setLastHealthUpdatedAt] = useState<Date | null>(null);
+  const [lastMetricsUpdatedAt, setLastMetricsUpdatedAt] = useState<Date | null>(null);
 
   // Estado local para a POC.
   // Como você só informou o endpoint de toggle, iniciamos como true.
@@ -48,6 +54,7 @@ export function StatusPage() {
 
   const poolIntervalRef = useRef<number | null>(null);
   const healthIntervalRef = useRef<number | null>(null);
+  const metricsIntervalRef = useRef<number | null>(null);
 
   async function loadAds() {
     try {
@@ -100,6 +107,38 @@ export function StatusPage() {
     } finally {
       if (!silent) {
         setIsLoadingStatus(false);
+      }
+    }
+  }
+
+  async function loadMetrics(options?: { showToast?: boolean; silent?: boolean }) {
+    const showToast = options?.showToast ?? false;
+    const silent = options?.silent ?? false;
+
+    try {
+      setErrorMessage(null);
+
+      if (!silent) {
+        setIsLoadingMetrics(true);
+      }
+
+      const response = await getMetricsSummary();
+      setMetricsData(response);
+      setLastMetricsUpdatedAt(new Date());
+
+      if (showToast) {
+        toast.success("Métricas atualizadas.");
+      }
+    } catch (error) {
+      console.error(error);
+
+      if (!silent) {
+        setErrorMessage("Não foi possível carregar as métricas da Engine.");
+        toast.error("Falha ao carregar métricas.");
+      }
+    } finally {
+      if (!silent) {
+        setIsLoadingMetrics(false);
       }
     }
   }
@@ -191,16 +230,21 @@ export function StatusPage() {
       await Promise.all([
         loadPoolStatus(selectedAdId, { showToast: true, silent: false }),
         loadHealth({ showToast: true, silent: false }),
+        loadMetrics({ showToast: true, silent: false }),
       ]);
       return;
     }
 
-    await loadHealth({ showToast: true, silent: false });
+    await Promise.all([
+      loadHealth({ showToast: true, silent: false }),
+      loadMetrics({ showToast: true, silent: false }),
+    ]);
   }
 
   useEffect(() => {
     void loadAds();
     void loadHealth({ silent: false });
+    void loadMetrics({ silent: false });
   }, []);
 
   useEffect(() => {
@@ -245,6 +289,23 @@ export function StatusPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (metricsIntervalRef.current) {
+      window.clearInterval(metricsIntervalRef.current);
+    }
+
+    metricsIntervalRef.current = window.setInterval(() => {
+      void loadMetrics({ silent: true });
+    }, METRICS_AUTO_REFRESH_MS);
+
+    return () => {
+      if (metricsIntervalRef.current) {
+        window.clearInterval(metricsIntervalRef.current);
+        metricsIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <section className="grid gap-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -258,6 +319,9 @@ export function StatusPage() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 Health {HEALTH_AUTO_REFRESH_MS / 1000}s
               </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                Métricas {METRICS_AUTO_REFRESH_MS / 1000}s
+              </span>
             </div>
 
             <p className="mt-1 text-sm text-slate-600">
@@ -265,7 +329,7 @@ export function StatusPage() {
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Última atualização do pool
@@ -281,6 +345,15 @@ export function StatusPage() {
               </p>
               <p className="mt-2 text-sm font-semibold text-slate-900">
                 {formatLastUpdate(lastHealthUpdatedAt)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Última atualização das métricas
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">
+                {formatLastUpdate(lastMetricsUpdatedAt)}
               </p>
             </div>
           </div>
@@ -309,7 +382,13 @@ export function StatusPage() {
                   type="button"
                   variant="secondary"
                   onClick={() => void handleRefreshAll()}
-                  disabled={isLoadingStatus || isLoadingHealth || isSubmittingRefill || isTogglingAI}
+                  disabled={
+                    isLoadingStatus ||
+                    isLoadingHealth ||
+                    isLoadingMetrics ||
+                    isSubmittingRefill ||
+                    isTogglingAI
+                  }
                 >
                   Atualizar status
                 </AppButton>
@@ -334,6 +413,12 @@ export function StatusPage() {
         <LoadingState message="Carregando health do sistema..." />
       ) : (
         healthData && <DependenciesHealthCard data={healthData} />
+      )}
+
+      {isLoadingMetrics && !metricsData ? (
+        <LoadingState message="Carregando métricas da Engine..." />
+      ) : (
+        metricsData && <MetricsSummaryCard data={metricsData} />
       )}
     </section>
   );
