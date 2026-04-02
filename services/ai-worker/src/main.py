@@ -3,32 +3,39 @@ import json
 import logging
 import os
 import uuid
-from datetime import UTC, datetime
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 import pybreaker
-from db.session import AsyncSessionLocal, engine
 from fastapi import FastAPI, HTTPException
-from models.domain import Base
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+from db.session import AsyncSessionLocal, engine
+from models.domain import Base
 from services.ai_service import call_llm, generate_challenges
-from services.repository import (count_static_challenges,
-                                 create_or_update_generation_job,
-                                 get_last_generation_result,
-                                 save_static_challenges,
-                                 update_generation_job_status)
-from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
-                      wait_exponential)
+from services.llm_retry import is_transient_llm_error
+from services.repository import (
+    count_static_challenges,
+    create_or_update_generation_job,
+    get_last_generation_result,
+    save_static_challenges,
+    update_generation_job_status,
+)
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("ai-worker")
 
 REDIS_URL = os.getenv("REDIS_QUEUE_URL", "redis://localhost:6379/0")
 REFILL_STREAM_KEY = os.getenv("REFILL_STREAM_KEY", "stream:refill_jobs")
+REFILL_DLQ_STREAM_KEY = os.getenv("REFILL_DLQ_STREAM_KEY", "stream:refill_dlq")
 POOL_KEY_PREFIX = os.getenv("POOL_KEY_PREFIX", "pool:ad:")
 MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", "3"))
+AI_RETRY_MIN_SEC = int(os.getenv("AI_RETRY_MIN_SEC", "1"))
+AI_RETRY_MAX_SEC = int(os.getenv("AI_RETRY_MAX_SEC", "60"))
+AI_RETRY_BACKOFF_MULTIPLIER = float(os.getenv("AI_RETRY_BACKOFF_MULTIPLIER", "1"))
 CIRCUIT_FAIL_MAX = int(os.getenv("AI_CIRCUIT_FAIL_MAX", "5"))
 CIRCUIT_RESET_TIMEOUT_SEC = int(os.getenv("AI_CIRCUIT_RESET_TIMEOUT_SEC", "60"))
 STREAM_BLOCK_MS = int(os.getenv("REDIS_STREAM_BLOCK_MS", "5000"))
@@ -47,8 +54,12 @@ circuit_breaker = pybreaker.CircuitBreaker(
 
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
-    retry=retry_if_exception_type(Exception),
+    wait=wait_exponential(
+        multiplier=AI_RETRY_BACKOFF_MULTIPLIER,
+        min=AI_RETRY_MIN_SEC,
+        max=AI_RETRY_MAX_SEC,
+    ),
+    retry=retry_if_exception(is_transient_llm_error),
     reraise=True,
 )
 def protected_llm_call(prompt: str):
@@ -97,7 +108,6 @@ async def push_challenges_to_pool(ad_id: str, challenges: list[Any]) -> int:
     return len(serialized)
 
 
-
 async def consume_refill_stream() -> None:
     if redis_client is None:
         raise RuntimeError("Redis ainda não foi inicializado.")
@@ -124,9 +134,7 @@ async def consume_refill_stream() -> None:
                     try:
                         await process_job_payload(payload)
                     except Exception:
-                        logger.exception(
-                            "Falha ao processar job %s", payload.get("job_id")
-                        )
+                        logger.exception("Falha ao processar job %s", payload.get("job_id"))
         except asyncio.CancelledError:
             logger.info("Consumidor do stream finalizado.")
             raise
@@ -162,11 +170,10 @@ async def health() -> dict[str, Any]:
         redis_ok = bool(await redis_client.ping())
 
     # Verifica se a última tentativa falhou devido ao Kill Switch
-    is_ai_killed = (
-        last_job_status.get("status") == "failed" 
-        and "Kill Switch ativado" in str(last_job_status.get("error", ""))
+    is_ai_killed = last_job_status.get("status") == "failed" and "Kill Switch ativado" in str(
+        last_job_status.get("error", "")
     )
-    
+
     # Status global reflete a saúde do Worker
     status = "error" if (not redis_ok or is_ai_killed) else "ok"
 
@@ -174,6 +181,8 @@ async def health() -> dict[str, Any]:
         "status": status,
         "redis": "up" if redis_ok else "down",
         "circuit_breaker": str(circuit_breaker.current_state),
+        "refill_stream": REFILL_STREAM_KEY,
+        "dlq_stream": REFILL_DLQ_STREAM_KEY,
         "last_job_status": last_job_status,
     }
 
@@ -202,6 +211,7 @@ async def get_last_job_status() -> dict[str, Any]:
         "database": db_last,
     }
 
+
 async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
     job_id = str(payload.get("job_id") or f"job_{uuid.uuid4().hex[:8]}")
     ad_id = str(payload.get("ad_id") or "").strip()
@@ -222,8 +232,12 @@ async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
         is_enabled = await redis_client.get("feature_flag:ai_enabled")
         if is_enabled == b"false":
             await create_or_update_generation_job(
-                session=session, job_id=job_id, ad_id=ad_id,
-                requested_count=requested_count, status="failed", reason=str(payload.get("reason") or "refill"),
+                session=session,
+                job_id=job_id,
+                ad_id=ad_id,
+                requested_count=requested_count,
+                status="failed",
+                reason=str(payload.get("reason") or "refill"),
             )
             last_job_status = {
                 "job_id": job_id,
@@ -234,13 +248,17 @@ async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
         static_count = await count_static_challenges(session, ad_id)
         needs_static = static_count == 0
-        
+
         # Pede  mais se o fallback estiver vazio
         total_to_request = requested_count + (3 if needs_static else 0)
 
         await create_or_update_generation_job(
-            session=session, job_id=job_id, ad_id=ad_id,
-            requested_count=requested_count, status="processing", reason=str(payload.get("reason") or "refill"),
+            session=session,
+            job_id=job_id,
+            ad_id=ad_id,
+            requested_count=requested_count,
+            status="processing",
+            reason=str(payload.get("reason") or "refill"),
         )
 
         try:
@@ -248,14 +266,14 @@ async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 session=session,
                 job_id=job_id,
                 ad_id=ad_id,
-                requested_count=total_to_request, 
+                requested_count=total_to_request,
                 llm_callable=protected_llm_call,
             )
-            
+
             pool_challenges = challenges
             if needs_static and len(challenges) > requested_count:
-                static_challenges = challenges[-3:] 
-                pool_challenges = challenges[:-3]   
+                static_challenges = challenges[-3:]
+                pool_challenges = challenges[:-3]
                 await save_static_challenges(session, ad_id, static_challenges)
 
             pushed = await push_challenges_to_pool(ad_id, pool_challenges)

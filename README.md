@@ -29,7 +29,13 @@ POC 4 — IA como Pool (Não Dependência Síncrona)
 4. **Painel** (React/Vite): ver secção [Painel web no Docker](#painel-web-no-docker) abaixo.
 5. **PostgreSQL** (dados), **Redis** (fila), **ai-worker** (Python), **engine** e **panel** estão definidos em `docker-compose.yml`.
 
-Variáveis principais: `DATABASE_URL`, `REDIS_QUEUE_URL` e `GEMINI_API_KEY`. Veja `.env.example`.
+**Bulkhead (isolamento na infra):** no `docker-compose.yml`, a API (**engine**) e o **ai-worker** são containers separados; **Postgres** e **Redis** ficam em redes bridge distintas (`postgres_net` e `redis_net`), e só os serviços que precisam de cada recurso ligam à rede correspondente. Há ainda **limites de CPU/memória** por serviço (`deploy.resources.limits`) para reduzir o risco de um container consumir todos os recursos do host. Ver também o ADR `docs/adrs/02-estrategia-fallback-isolamento-bulkhead.md`.
+
+**Retry + DLQ (ai-worker):** chamadas ao modelo (Gemini / HTTP) usam **retentativas com backoff exponencial** (`AI_MAX_RETRIES`, `AI_RETRY_MIN_SEC`, `AI_RETRY_MAX_SEC`, `AI_RETRY_BACKOFF_MULTIPLIER`) apenas para **falhas transitórias** (rede, timeouts, 429/503, etc.). Se o job continuar a falhar, o payload é registado no **Dead Letter Queue** — stream Redis `REFILL_DLQ_STREAM_KEY` (padrão `stream:refill_dlq`), consultável no `/health` do ai-worker (`dlq_stream`).
+
+**Load shedding (engine, ADR 03):** com `LOAD_SHEDDING_ENABLED=true`, a engine consulta o **`/health` do ai-worker** e, se o worker estiver degradado (rede, Redis do worker em baixo, circuit breaker aberto, etc.), **não enfileira novos jobs** de geração; leituras de desafios (pool / estático) mantêm-se. `POST /ads/:adId/refill` responde **503** (`LOAD_SHEDDING`). Configure `AI_WORKER_BASE_URL` (no Docker: `http://ai-worker:8001`).
+
+Variáveis principais: `DATABASE_URL`, `REDIS_QUEUE_URL`, `GEMINI_API_KEY`, (fila/DLQ) `REFILL_STREAM_KEY` / `REFILL_DLQ_STREAM_KEY`, (shedding) `LOAD_SHEDDING_ENABLED` / `AI_WORKER_BASE_URL`. Veja `.env.example`.
 
 > Sem `GEMINI_API_KEY`, os serviços sobem normalmente com `docker compose up --build`, mas funcionalidades de geração de desafios com IA no `ai-worker` não funcionarão.
 
@@ -56,7 +62,7 @@ O Compose inclui o serviço **`panel`**, que sobe o front-end em **`POC4-panel/`
 
 * **Engine:** `cd services/engine`, `corepack enable` (uma vez), `pnpm install`, `pnpm run dev` (usa `services/engine/.env`).
 * **Shared:** `cd services/shared`, `pnpm install`, `pnpm run check` (não requer variáveis de ambiente no momento).
-* **ai-worker:** `cd services/ai-worker`, `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`, `pip install -r requirements-dev.txt` (usa `services/ai-worker/.env`).
+* **ai-worker:** `cd services/ai-worker`, `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`, `pip install -r requirements.txt` (usa `services/ai-worker/.env`).
 
 ### Padrão de código (lint e formatação)
 
@@ -64,7 +70,7 @@ O Compose inclui o serviço **`panel`**, que sobe o front-end em **`POC4-panel/`
 |--------|-------------|----------|
 | `services/engine` | ESLint + Prettier | `pnpm run lint`, `pnpm run format`, `pnpm run format:check`, `pnpm run check` |
 | `services/shared` | ESLint + Prettier | os mesmos, na pasta `services/shared` |
-| `services/ai-worker` | [Ruff](https://docs.astral.sh/ruff/) | `pip install -r requirements-dev.txt`, `ruff check .`, `ruff format --check .` (ou `ruff format .`) |
+| `services/ai-worker` | [Ruff](https://docs.astral.sh/ruff/) | `pip install -r requirements.txt`, `ruff check .`, `ruff format --check .` (ou `ruff format .`) |
 
 ### CI no GitHub
 
@@ -78,4 +84,5 @@ Para validar **antes** do `git commit`, use hooks locais (ex.: Husky + lint-stag
 
 ## Documentação
 
-* ADRs: pasta `docs/adrs/`.
+* **Decisões técnicas (resumo):** `docs/decisoes-tecnicas.md`.
+* **ADRs:** pasta `docs/adrs/`.

@@ -2,17 +2,23 @@
 
 | Campo | Valor |
 |--------|--------|
-| **Status** | Proposto |
-| **Data** | 2026-03-20 |
+| **Status** | Aceito |
+| **Data** | 2026-03-20 (atualizado 2026-04-02) |
 | **Padrão** | SYNC vs ASYNC / filas (escalabilidade) |
 
 ## Contexto
 
-A latência da integração com IA (ex.: OpenAI) é **alta e imprevisível**. Um fluxo **síncrono** na API exporia o cliente a esperas longas e a risco de **timeout**, degradando a experiência e a confiabilidade do canal HTTP.
+A latência da integração com IA (ex.: Gemini) é **alta e imprevisível**. Um fluxo **síncrono** na API exporia o cliente a esperas longas e a risco de **timeout**, degradando a experiência e a confiabilidade do canal HTTP.
 
 ## Decisão
 
-Utilizar **Redis** e **BullMQ** (ecossistema **Node.js**) para gerenciar uma **fila de geração** assíncrona. O **Motor de Desafios** (API/engine) **apenas consome o que já está pronto** no Redis (resultados disponibilizados pelo fluxo assíncrono), em vez de bloquear na chamada à IA.
+Utilizar **Redis** como backend de **fila e pool**, com pipeline híbrido:
+
+- a **engine** (Node.js) publica jobs de refill na **BullMQ**;
+- um worker BullMQ na engine repassa o job para o **Redis Stream** (`REFILL_STREAM_KEY`);
+- o **ai-worker** (Python) consome o stream, chama o LLM e publica desafios no pool (`POOL_KEY_PREFIX`).
+
+Assim, a API HTTP não bloqueia em chamada de IA: o caminho crítico do cliente permanece desacoplado do processamento pesado.
 
 ## Consequências
 
@@ -20,13 +26,16 @@ Utilizar **Redis** e **BullMQ** (ecossistema **Node.js**) para gerenciar uma **f
 
 - Latência percebida pelo usuário final pode permanecer **baixa** (meta: **&lt; 50 ms** para operações que não dependem do término da geração), com trabalho pesado deslocado para workers.
 - Escalabilidade horizontal do processamento de IA de forma independente da API.
+- Controle de fila no lado Node com recursos da BullMQ (tentativas, backoff, backlog, métricas).
 
 ### Trade-offs
 
 - Introduz **consistência eventual**: o *pool* de desafios pode **demorar a encher** após picos de demanda ou cold start.
-- Operação e observabilidade de **fila** (retries, dead-letter, monitoramento) passam a ser requisitos de primeira classe.
+- Arquitetura híbrida (BullMQ + Redis Stream + worker Python) aumenta a complexidade operacional.
+- Exige manter consistência de configuração entre engine e ai-worker (chaves, streams e política de retries).
 
 ## Referências
 
-- [BullMQ](https://docs.bullmq.io/)
-- Redis como backend de filas e estado de jobs.
+- BullMQ (`services/engine/src/queues/refill-queue.ts`).
+- Redis Streams e listas (refill/pool).
+- Documentação do projeto: `README.md`, `services/ai-worker` (retry, DLQ) e `services/engine` (fila/refill).

@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 
-from db.session import Base
 from sqlalchemy import JSON, Column, Integer, String, Text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
+
+from db.session import Base
 
 
 class AdContent(Base):
@@ -42,6 +43,7 @@ class GenerationResult(Base):
     status = Column(String)
     error_message = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+
 
 class StaticChallenge(Base):
     __tablename__ = "static_challenges"
