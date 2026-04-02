@@ -45,11 +45,39 @@ services:
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
       RATE_LIMIT_WINDOW_SEC: ${RATE_LIMIT_WINDOW_SEC:-60}
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      REFILL_STREAM_KEY: ${REFILL_STREAM_KEY:-stream:refill_jobs}
+      REFILL_BULLMQ_QUEUE_NAME: ${REFILL_BULLMQ_QUEUE_NAME:-refill-to-stream}
+      BULLMQ_PREFIX: ${BULLMQ_PREFIX:-bull}
+      REFILL_WORKER_CONCURRENCY: ${REFILL_WORKER_CONCURRENCY:-8}
+      REFILL_QUEUE_ATTEMPTS: ${REFILL_QUEUE_ATTEMPTS:-3}
+      REFILL_QUEUE_BACKOFF_MS: ${REFILL_QUEUE_BACKOFF_MS:-1500}
+      LOAD_SHED_ENABLED: ${LOAD_SHED_ENABLED:-true}
+      LOAD_SHED_MAX_WAITING: ${LOAD_SHED_MAX_WAITING:-500}
+      LOAD_SHED_CONCURRENT_MAX: ${LOAD_SHED_CONCURRENT_MAX:-0}
+      LOAD_SHED_SLOT_TTL_SEC: ${LOAD_SHED_SLOT_TTL_SEC:-120}
+      AI_DLQ_LIST_KEY: ${AI_DLQ_LIST_KEY:-dlq:ai:refill}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Painel React (Vite): npm ci + dev no container — abre no host em PANEL_PORT
+  panel:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    ports:
+      - "${PANEL_PORT:-5173}:5173"
+    environment:
+      # URL da API **no browser** (máquina do utilizador). Deve coincidir com ENGINE_PORT no host.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    volumes:
+      - ./POC4-panel:/app
+      - poc4_panel_node_modules:/app/node_modules
+    command: >
+      sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - engine
 
   ai-worker:
     build:
@@ -63,6 +91,7 @@ services:
       POOL_KEY_PREFIX: ${POOL_KEY_PREFIX:-pool:ad:}
       AI_WORKER_INTERVAL_SEC: "${AI_WORKER_INTERVAL_SEC:-30}"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-"Sua API key aqui"}
+      AI_DLQ_LIST_KEY: ${AI_DLQ_LIST_KEY:-dlq:ai:refill}
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,3 +100,4 @@ services:
 
 volumes:
   postgres_data:
+  poc4_panel_node_modules:
