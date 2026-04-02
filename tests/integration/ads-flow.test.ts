@@ -205,7 +205,7 @@ describe("Integração — Fluxo ponta a ponta", () => {
         });
     });
 
-    describe("Passo 3c: GET /ads/:adId — detalhe", () => {
+    describe("Passo 3b: GET /ads/:adId — detalhe", () => {
         beforeAll(() => {
             if (!adId) throw new Error("adId não definido — Passo 2 falhou");
         });
