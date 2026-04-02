@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPoolStatus, listAds, triggerRefill } from "../api/ads";
-import { getDependenciesHealth } from "../api/health";
+import { getDependenciesHealth, toggleAI } from "../api/health";
 import type { Ad, DependenciesHealthResponse, PoolStatus } from "../types";
 import { AdSelector } from "../components/AdSelector";
 import { PoolStatusCard } from "../components/PoolStatusCard";
@@ -10,6 +10,7 @@ import { RefillButton } from "../components/RefillButton";
 import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
 import { AppButton } from "../components/AppButton";
+import { AIToggleCard } from "../components/AIToggleCard";
 
 const POOL_AUTO_REFRESH_MS = 5000;
 const HEALTH_AUTO_REFRESH_MS = 10000;
@@ -34,11 +35,16 @@ export function StatusPage() {
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isSubmittingRefill, setIsSubmittingRefill] = useState(false);
+  const [isTogglingAI, setIsTogglingAI] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [lastPoolUpdatedAt, setLastPoolUpdatedAt] = useState<Date | null>(null);
   const [lastHealthUpdatedAt, setLastHealthUpdatedAt] = useState<Date | null>(null);
+
+  // Estado local para a POC.
+  // Como você só informou o endpoint de toggle, iniciamos como true.
+  const [aiEnabled, setAiEnabled] = useState(true);
 
   const poolIntervalRef = useRef<number | null>(null);
   const healthIntervalRef = useRef<number | null>(null);
@@ -156,6 +162,30 @@ export function StatusPage() {
     }
   }
 
+  async function handleToggleAI() {
+    const nextEnabled = !aiEnabled;
+    const loadingToastId = toast.loading(
+      nextEnabled ? "Ligando API do Gemini..." : "Desligando API do Gemini..."
+    );
+
+    try {
+      setErrorMessage(null);
+      setIsTogglingAI(true);
+
+      const response = await toggleAI({ enabled: nextEnabled });
+      setAiEnabled(response.ai_enabled);
+
+      toast.success(response.message, { id: loadingToastId });
+    } catch (error) {
+      console.error(error);
+      toast.error("Não foi possível alterar o estado da IA.", {
+        id: loadingToastId,
+      });
+    } finally {
+      setIsTogglingAI(false);
+    }
+  }
+
   async function handleRefreshAll() {
     if (selectedAdId) {
       await Promise.all([
@@ -265,7 +295,7 @@ export function StatusPage() {
                 items={ads}
                 selectedAdId={selectedAdId}
                 onChange={setSelectedAdId}
-                disabled={isSubmittingRefill || isLoadingStatus}
+                disabled={isSubmittingRefill || isLoadingStatus || isTogglingAI}
               />
 
               <div className="flex flex-wrap gap-3">
@@ -279,7 +309,7 @@ export function StatusPage() {
                   type="button"
                   variant="secondary"
                   onClick={() => void handleRefreshAll()}
-                  disabled={isLoadingStatus || isLoadingHealth || isSubmittingRefill}
+                  disabled={isLoadingStatus || isLoadingHealth || isSubmittingRefill || isTogglingAI}
                 >
                   Atualizar status
                 </AppButton>
@@ -288,6 +318,12 @@ export function StatusPage() {
           )}
         </div>
       </div>
+
+      <AIToggleCard
+        aiEnabled={aiEnabled}
+        isLoading={isTogglingAI}
+        onToggle={handleToggleAI}
+      />
 
       {isLoadingStatus && !poolStatus && (
         <LoadingState message="Carregando status do pool..." />

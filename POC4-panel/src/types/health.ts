@@ -11,3 +11,12 @@ export type DependenciesHealthResponse = {
     postgres: "ok" | "error";
   };
 };
+
+export type ToggleAIRequest = {
+  enabled: boolean;
+};
+
+export type ToggleAIResponse = {
+  message: string;
+  ai_enabled: boolean;
+};
