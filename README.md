@@ -9,7 +9,7 @@
 * Davi Baratto (83 99113-0125, davibto1427@gmail.com)
 * Eduardo Alves Braz de Medeiros (83 9893-9463)
 * Pedro Luccas de Brito Brock (81 98221-9101, pedrosbrock@gmail.com)
-* Pedro Targino Gomes (83 9164-3401)
+* Pedro Targino Gomes (83 99164-3401, pedrotargin@gmail.com)
 
 ### Tema escolhido
 
