@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 import os
 import uuid
+from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -30,6 +32,7 @@ MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", "3"))
 CIRCUIT_FAIL_MAX = int(os.getenv("AI_CIRCUIT_FAIL_MAX", "5"))
 CIRCUIT_RESET_TIMEOUT_SEC = int(os.getenv("AI_CIRCUIT_RESET_TIMEOUT_SEC", "60"))
 STREAM_BLOCK_MS = int(os.getenv("REDIS_STREAM_BLOCK_MS", "5000"))
+AI_DLQ_LIST_KEY = os.getenv("AI_DLQ_LIST_KEY", "dlq:ai:refill")
 
 redis_client: Redis | None = None
 last_job_status: dict[str, Any] = {"status": "idle"}
@@ -61,6 +64,25 @@ class GenerateRequest(BaseModel):
 async def ensure_schema() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def push_to_dlq(
+    payload: dict[str, Any],
+    error: str,
+    stage: str,
+) -> None:
+    """Dead Letter Queue (Redis): falhas permanentes no processamento IA/refill."""
+    if redis_client is None:
+        return
+    record = {
+        "payload": payload,
+        "error": error[:2000],
+        "stage": stage,
+        "ts": datetime.now(UTC).isoformat(),
+    }
+    raw = json.dumps(record, default=str)
+    await redis_client.rpush(AI_DLQ_LIST_KEY, raw)
+    logger.warning("Evento enviado à DLQ (%s): %s", AI_DLQ_LIST_KEY, stage)
 
 
 async def push_challenges_to_pool(ad_id: str, challenges: list[Any]) -> int:
@@ -102,7 +124,9 @@ async def consume_refill_stream() -> None:
                     try:
                         await process_job_payload(payload)
                     except Exception:
-                        logger.exception("Falha ao processar job %s", payload.get("job_id"))
+                        logger.exception(
+                            "Falha ao processar job %s", payload.get("job_id")
+                        )
         except asyncio.CancelledError:
             logger.info("Consumidor do stream finalizado.")
             raise
@@ -255,4 +279,17 @@ async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 "status": "failed",
                 "error": str(exc),
             }
+            try:
+                await push_to_dlq(
+                    {
+                        "job_id": job_id,
+                        "ad_id": ad_id,
+                        "requested_count": requested_count,
+                        "reason": str(payload.get("reason") or ""),
+                    },
+                    str(exc),
+                    "process_job_payload",
+                )
+            except Exception:
+                logger.exception("Falha ao gravar na DLQ após erro de geração")
             raise
