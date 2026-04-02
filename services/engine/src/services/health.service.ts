@@ -64,4 +64,14 @@ export const healthService = {
             ),
         };
     },
+
+    /** Alinhado ao ai-worker: só `false` explícito desliga; chave ausente = IA permitida. */
+    async getAiFeatureFlag() {
+        const raw = await redis.get("feature_flag:ai_enabled");
+        const ai_enabled = raw !== "false";
+        return {
+            service: "engine" as const,
+            ai_enabled,
+        };
+    },
 };

@@ -20,3 +20,8 @@ export type ToggleAIResponse = {
   message: string;
   ai_enabled: boolean;
 };
+
+export type AiFeatureFlagResponse = {
+  service: string;
+  ai_enabled: boolean;
+};

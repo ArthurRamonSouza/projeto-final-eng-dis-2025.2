@@ -1,7 +1,8 @@
 import { AppButton } from "./AppButton";
 
 type AIToggleCardProps = {
-  aiEnabled: boolean;
+  /** `null` enquanto o estado é carregado do Redis (engine). */
+  aiEnabled: boolean | null;
   isLoading: boolean;
   onToggle: () => Promise<void>;
 };
@@ -24,23 +25,36 @@ export function AIToggleCard({
         <span
           className={[
             "inline-flex rounded-full px-3 py-1 text-xs font-semibold",
-            aiEnabled
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-rose-100 text-rose-700",
+            aiEnabled === null
+              ? "bg-slate-100 text-slate-600"
+              : aiEnabled
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-rose-100 text-rose-700",
           ].join(" ")}
         >
-          {aiEnabled ? "IA habilitada" : "IA desabilitada"}
+          {aiEnabled === null
+            ? "Sincronizando com Redis…"
+            : aiEnabled
+              ? "IA habilitada"
+              : "IA desabilitada"}
         </span>
       </div>
 
       <div>
         <AppButton
           type="button"
-          variant={aiEnabled ? "danger" : "success"}
+          variant={
+            aiEnabled === null ? "secondary" : aiEnabled ? "danger" : "success"
+          }
           onClick={() => void onToggle()}
           isLoading={isLoading}
+          disabled={aiEnabled === null}
         >
-          {aiEnabled ? "Desligar IA" : "Ligar IA"}
+          {aiEnabled === null
+            ? "Aguarde…"
+            : aiEnabled
+              ? "Desligar IA"
+              : "Ligar IA"}
         </AppButton>
       </div>
     </article>

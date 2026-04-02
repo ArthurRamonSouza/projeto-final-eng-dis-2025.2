@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPoolStatus, listAds, triggerRefill } from "../api/ads";
 import {
+  getAiFeatureFlag,
   getDependenciesHealth,
   getRedisPoolCircuit,
   toggleAI,
@@ -70,9 +71,7 @@ export function StatusPage() {
   const [lastRedisPoolCircuitUpdatedAt, setLastRedisPoolCircuitUpdatedAt] =
     useState<Date | null>(null);
 
-  // Estado local para a POC.
-  // Como existe apenas o endpoint de toggle, iniciamos como true.
-  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
 
   const poolIntervalRef = useRef<number | null>(null);
   const healthIntervalRef = useRef<number | null>(null);
@@ -255,7 +254,18 @@ export function StatusPage() {
     }
   }
 
+  async function loadAiFeatureFlag() {
+    try {
+      const response = await getAiFeatureFlag();
+      setAiEnabled(response.ai_enabled);
+    } catch (error) {
+      console.error(error);
+      toast.error("Não foi possível ler o estado da IA no Redis.");
+    }
+  }
+
   async function handleToggleAI() {
+    if (aiEnabled === null) return;
     const nextEnabled = !aiEnabled;
     const loadingToastId = toast.loading(
       nextEnabled ? "Ligando API do Gemini..." : "Desligando API do Gemini...",
@@ -284,6 +294,7 @@ export function StatusPage() {
       loadHealth({ showToast: true, silent: false }),
       loadMetrics({ showToast: false, silent: false }),
       loadRedisPoolCircuit({ showToast: false, silent: false }),
+      loadAiFeatureFlag(),
     ];
 
     if (selectedAdId) {
@@ -300,6 +311,7 @@ export function StatusPage() {
     void loadHealth({ silent: false });
     void loadMetrics({ silent: false });
     void loadRedisPoolCircuit({ silent: false });
+    void loadAiFeatureFlag();
   }, []);
 
   useEffect(() => {

@@ -30,6 +30,8 @@ vi.mock("../lib/redis.js", () => ({
         rpop: vi.fn(),
         llen: vi.fn(),
         ping: vi.fn(),
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue("OK"),
         eval: vi.fn().mockResolvedValue([1, 59]),
         scan: vi.fn().mockResolvedValue(["0", []]),
     },

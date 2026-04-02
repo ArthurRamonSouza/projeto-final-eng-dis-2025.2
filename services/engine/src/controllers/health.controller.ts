@@ -7,6 +7,7 @@ export interface HealthController {
     liveness: RequestHandler<ParamsDictionary>;
     dependencies: RequestHandler<ParamsDictionary>;
     redisPoolCircuit: RequestHandler<ParamsDictionary>;
+    aiFeatureFlag: RequestHandler<ParamsDictionary>;
     toggleAi: RequestHandler;
 }
 
@@ -22,6 +23,11 @@ export const healthController: HealthController = {
 
     redisPoolCircuit: async (_req, res) => {
         res.json(healthService.getRedisPoolCircuit());
+    },
+
+    aiFeatureFlag: async (_req, res) => {
+        const result = await healthService.getAiFeatureFlag();
+        res.json(result);
     },
 
     toggleAi: async (req, res) => {

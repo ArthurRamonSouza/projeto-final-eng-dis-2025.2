@@ -5,6 +5,7 @@ import type {
   ToggleAIRequest,
   ToggleAIResponse,
   RedisPoolCircuitResponse,
+  AiFeatureFlagResponse,
 } from "../types";
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -19,6 +20,11 @@ export async function getDependenciesHealth(): Promise<DependenciesHealthRespons
 
 export async function getRedisPoolCircuit(): Promise<RedisPoolCircuitResponse> {
   const { data } = await api.get<RedisPoolCircuitResponse>("/health/redis-pool-circuit");
+  return data;
+}
+
+export async function getAiFeatureFlag(): Promise<AiFeatureFlagResponse> {
+  const { data } = await api.get<AiFeatureFlagResponse>("/health/ai-feature-flag");
   return data;
 }
 

@@ -56,4 +56,20 @@ describe("HealthController (rotas /health)", () => {
             res.body.redis_challenge_pool_circuit,
         );
     });
+
+    it("GET /health/ai-feature-flag — chave ausente => IA habilitada (igual ai-worker)", async () => {
+        vi.mocked(redis.get).mockResolvedValueOnce(null);
+        const app = await createApp();
+        const res = await request(app).get("/health/ai-feature-flag");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ service: "engine", ai_enabled: true });
+    });
+
+    it("GET /health/ai-feature-flag — false no Redis => desligada", async () => {
+        vi.mocked(redis.get).mockResolvedValueOnce("false");
+        const app = await createApp();
+        const res = await request(app).get("/health/ai-feature-flag");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ service: "engine", ai_enabled: false });
+    });
 });
