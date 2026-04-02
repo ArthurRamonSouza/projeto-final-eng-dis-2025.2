@@ -1,5 +1,10 @@
 import { api } from "./client";
-import type { HealthResponse, DependenciesHealthResponse } from "../types";
+import type {
+  HealthResponse,
+  DependenciesHealthResponse,
+  ToggleAIRequest,
+  ToggleAIResponse,
+} from "../types";
 
 export async function getHealth(): Promise<HealthResponse> {
   const { data } = await api.get<HealthResponse>("/health");
@@ -8,5 +13,10 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function getDependenciesHealth(): Promise<DependenciesHealthResponse> {
   const { data } = await api.get<DependenciesHealthResponse>("/health/dependencies");
+  return data;
+}
+
+export async function toggleAI(payload: ToggleAIRequest): Promise<ToggleAIResponse> {
+  const { data } = await api.post<ToggleAIResponse>("/health/toggle-ai", payload);
   return data;
 }
