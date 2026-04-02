@@ -1,6 +1,5 @@
-import { env } from "../config/env.js";
 import { HttpError } from "../errors/http-error.js";
-import { redis } from "../lib/redis.js";
+import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { adRepository } from "../repositories/ad.repository.js";
 import { generationJobRepository } from "../repositories/generation-job.repository.js";
 import type { ManualRefillBody } from "../schemas/ads.schema.js";
@@ -20,18 +19,12 @@ export const refillApiService = {
             reason: "manual_refill",
         });
 
-        await redis.xadd(
-            env.REFILL_STREAM_KEY,
-            "*",
-            "job_id",
-            job.jobId,
-            "ad_id",
+        await enqueueRefillJob({
+            jobId: job.jobId,
             adId,
-            "requested_count",
-            body.requested_count,
-            "reason",
-            "manual_refill",
-        );
+            requestedCount: body.requested_count,
+            reason: "manual_refill",
+        });
 
         return {
             job: {

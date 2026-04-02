@@ -1,6 +1,6 @@
 import { env } from "../config/env.js";
 import { HttpError } from "../errors/http-error.js";
-import { redis } from "../lib/redis.js";
+import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { adRepository } from "../repositories/ad.repository.js";
 import type { CreateAdBody } from "../schemas/ads.schema.js";
 import { newAdId } from "../utils/ids.js";
@@ -40,18 +40,12 @@ export const adsService = {
             });
 
         if (initialJob) {
-            await redis.xadd(
-                env.REFILL_STREAM_KEY,
-                "*",
-                "job_id",
-                initialJob.jobId,
-                "ad_id",
-                id,
-                "requested_count",
-                env.POOL_TARGET,
-                "reason",
-                "initial_fill",
-            );
+            await enqueueRefillJob({
+                jobId: initialJob.jobId,
+                adId: id,
+                requestedCount: env.POOL_TARGET,
+                reason: "initial_fill",
+            });
         }
 
         return {

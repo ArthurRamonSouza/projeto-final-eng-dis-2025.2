@@ -22,6 +22,7 @@
         "test:resilience": "vitest run --config vitest.config.resilience.ts"
     },
     "dependencies": {
+        "bullmq": "^5.34.5",
         "@prisma/adapter-pg": "^7.5.0",
         "@prisma/client": "^7.5.0",
         "cors": "^2.8.6",

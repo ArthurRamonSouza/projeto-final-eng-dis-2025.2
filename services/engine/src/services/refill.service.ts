@@ -1,5 +1,5 @@
 import { env } from "../config/env.js";
-import { redis } from "../lib/redis.js";
+import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { generationJobRepository } from "../repositories/generation-job.repository.js";
 
 /**
@@ -27,18 +27,12 @@ export async function evaluateRefill(
         reason: "refill",
     });
 
-    await redis.xadd(
-        env.REFILL_STREAM_KEY,
-        "*",
-        "job_id",
-        job.jobId,
-        "ad_id",
+    await enqueueRefillJob({
+        jobId: job.jobId,
         adId,
-        "requested_count",
-        gap,
-        "reason",
-        "refill",
-    );
+        requestedCount: gap,
+        reason: "refill",
+    });
 
     return { refillRequested: true, newJobCreated: true };
 }

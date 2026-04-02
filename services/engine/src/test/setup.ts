@@ -31,8 +31,22 @@ vi.mock("../lib/redis.js", () => ({
         llen: vi.fn(),
         ping: vi.fn(),
         eval: vi.fn().mockResolvedValue([1, 59]),
+        scan: vi.fn().mockResolvedValue(["0", []]),
     },
     poolKey: (adId: string) => `pool:ad:${adId}`,
+}));
+
+vi.mock("../queues/refill-queue.js", () => ({
+    enqueueRefillJob: vi.fn().mockResolvedValue(undefined),
+    getRefillQueueCounts: vi.fn().mockResolvedValue({
+        waiting: 0,
+        active: 0,
+        delayed: 0,
+        failed: 0,
+        completed: 0,
+    }),
+    startRefillWorker: vi.fn(),
+    closeRefillInfrastructure: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { prisma } from "../lib/prisma.js";
