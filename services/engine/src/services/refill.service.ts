@@ -1,11 +1,8 @@
 import { env } from "../config/env.js";
 import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { generationJobRepository } from "../repositories/generation-job.repository.js";
+import { isSheddingLoad } from "./load-shedding.service.js";
 
-/**
- * Quando o pool está abaixo do mínimo, publica um job de refill se ainda não houver um em andamento.
- * Retorna se foi pedido refill (pool abaixo do mínimo) e se um novo job foi criado.
- */
 export async function evaluateRefill(
     adId: string,
     poolSizeAfterConsume: number,
@@ -13,6 +10,10 @@ export async function evaluateRefill(
     const refillRequested = poolSizeAfterConsume < env.POOL_MIN;
     if (!refillRequested) {
         return { refillRequested: false, newJobCreated: false };
+    }
+
+    if (await isSheddingLoad()) {
+        return { refillRequested: true, newJobCreated: false };
     }
 
     const inProgress = await generationJobRepository.hasRefillInProgress(adId);

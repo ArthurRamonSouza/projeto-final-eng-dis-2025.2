@@ -7,6 +7,15 @@ export default tseslint.config(
     ...tseslint.configs.recommended,
     eslintConfigPrettier,
     {
+        files: ["db/prisma/seed.mjs"],
+        languageOptions: {
+            globals: {
+                process: "readonly",
+                console: "readonly",
+            },
+        },
+    },
+    {
         ignores: ["dist/**", "node_modules/**", "src/generated/**"],
     },
 );

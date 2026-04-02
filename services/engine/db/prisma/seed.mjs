@@ -1,14 +1,21 @@
 // services/engine/db/prisma/seed.mjs
+import dotenv from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import pg from "pg";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../../../.env") });
+dotenv.config({ path: resolve(__dirname, "../../.env"), override: true });
+
 const { Pool } = pg;
 
-// Pegamos a URL de conexão direto das variáveis de ambiente do Docker
-const connectionString = process.env.DATABASE_URL;
+const connectionString =
+    process.env.DATABASE_URL ??
+    "postgresql://app:app@localhost:5433/app";
 
-// Configuramos o Pool do Postgres e o Adapter do Prisma
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });

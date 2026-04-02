@@ -2,30 +2,42 @@
 
 | Campo | Valor |
 |--------|--------|
-| **Status** | Proposto |
-| **Data** | 2026-03-20 |
+| **Status** | Aceito |
+| **Data** | 2026-03-20 (atualizado 2026-04-01) |
 | **Padrão** | Load shedding / priorização sob pressão |
 
 ## Contexto
 
-Em **picos de tráfego**, o processamento de **vídeos** (ou outras tarefas pesadas) pela IA pode consumir **CPU e memória** de forma agressiva, prejudicando quem está apenas **respondendo desafios** ou usando fluxos mais leves. Sem limitação, um subsistema pode **afetar todo o sistema**.
+Em **picos de tráfego**, o processamento pesado (ex.: geração via IA no worker) pode consumir **CPU, memória e filas** de forma agressiva, prejudicando quem está apenas a **consumir desafios** do pool ou fluxos mais leves. Sem limitação, um subsistema pode **afetar todo o sistema**.
 
 ## Decisão
 
-Implementar **load shedding** (descarte de carga): se a **latência** do `ai-worker` (ou métrica equivalente de saúde) **ultrapassar um limite crítico**, a API passa a responder **HTTP 503 (Service Unavailable)** para **novas solicitações de geração**, enquanto **prioriza** a entrega de desafios **já existentes** no *pool* (e fluxos que não ampliam a pressão sobre a IA).
+Implementar **load shedding** na **engine** (Node.js):
+
+1. A engine consulta o **`GET /health` do `ai-worker`** com **cache em memória**:
+   - TTL do cache: **`LOAD_SHEDDING_CACHE_MS`** (padrão: `2000ms`);
+   - Timeout por chamada de health: **`LOAD_SHEDDING_HEALTH_TIMEOUT_MS`** (padrão: `800ms`);
+   - Dentro do TTL, a engine reutiliza a última decisão (`shedding=true/false`) e evita chamar o worker em toda requisição.
+2. Se o worker estiver **degradado** — health inacessível, resposta não OK, **Redis do worker em baixo**, ou **circuit breaker aberto** (pybreaker) — a engine **deixa de enfileirar novo trabalho de geração** (nada de `XADD` no stream de refill).
+3. **Rotas de leitura** (ex.: `GET .../challenge`, pool status, listagens) **continuam**, servindo o que já existe no Redis/PostgreSQL (incluindo fallback estático).
+4. **`POST .../refill` manual** responde **503** com código `LOAD_SHEDDING` quando o shedding está ativo.
+5. Ativação por variável **`LOAD_SHEDDING_ENABLED=true`**; URL do worker em **`AI_WORKER_BASE_URL`** (ex.: `http://ai-worker:8001` no Docker).
+
+Comportamento detalhado no código: `services/engine/src/services/load-shedding.service.ts` e usos em `refill.service.ts`, `refill-api.service.ts`, `ads.service.ts`.
 
 ## Consequências
 
 ### Benefícios
 
-- **Estabilidade global** do sistema de recompensas e da API sob stress.
-- Proteção explícita dos caminhos críticos de leitura/uso frente ao custo de novas gerações.
+- **Estabilidade** da API sob stress: menos pressão na fila quando o worker já não acompanha.
+- Proteção dos caminhos de **leitura** frente ao custo de **novas gerações**.
 
 ### Trade-offs
 
-- Em momentos de pico, **alguns anunciantes** (ou atores que solicitam geração) **não conseguirão** processar novos vídeos até a recuperação — experiência degradada para esse subconjunto.
-- Exige **thresholds**, **métricas** e possivelmente **filas de retry** ou comunicação clara de indisponibilidade temporária.
+- Em picos, **refill automático** e **criação de anúncio com job inicial** podem **não enfileirar** geração até o worker recuperar; o utilizador de refill manual recebe **503**.
+- Requer **`AI_WORKER_BASE_URL` correto** na rede (Compose: nome do serviço + porta).
 
 ## Referências
 
-- Load shedding em sistemas distribuídos e APIs (priorização e *backpressure*).
+- Load shedding e *backpressure* em APIs.
+- Implementação: `services/engine/src/services/load-shedding.service.ts`.

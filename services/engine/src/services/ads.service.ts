@@ -4,6 +4,7 @@ import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { adRepository } from "../repositories/ad.repository.js";
 import type { CreateAdBody } from "../schemas/ads.schema.js";
 import { newAdId } from "../utils/ids.js";
+import { isSheddingLoad } from "./load-shedding.service.js";
 
 function toAdResponse(ad: {
     id: string;
@@ -22,6 +23,7 @@ function toAdResponse(ad: {
 export const adsService = {
     async create(body: CreateAdBody) {
         const id = newAdId();
+        const queueGeneration = !(await isSheddingLoad());
         const { ad, content, initialJob } =
             await adRepository.createWithContent({
                 id,
@@ -32,11 +34,13 @@ export const adsService = {
                     contentType: body.content_type,
                     contentText: body.content_text,
                 },
-                initialJob: {
-                    requestedCount: env.POOL_TARGET,
-                    reason: "initial_fill",
-                    status: "pending",
-                },
+                initialJob: queueGeneration
+                    ? {
+                          requestedCount: env.POOL_TARGET,
+                          reason: "initial_fill",
+                          status: "pending",
+                      }
+                    : undefined,
             });
 
         if (initialJob) {

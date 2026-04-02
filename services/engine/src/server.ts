@@ -14,7 +14,7 @@ async function startServer() {
     const port: number = Number(process.env.ENGINE_PORT ?? 8000);
 
     const server = app.listen(port, host, () => {
-        console.log(`Service engine runing at host ${host} and port ${port}`);
+        console.log(`Service engine running at host ${host} and port ${port}`);
         console.log(`URL to access local: http://localhost:${port}`);
     });
 

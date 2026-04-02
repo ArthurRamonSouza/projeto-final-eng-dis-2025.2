@@ -372,7 +372,7 @@ describe("Cenário 4: API Gemini indisponível → Circuit Breaker ativado (part
     afterEach(async () => {
         try {
             exec(
-                `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+                `docker network connect projeto-final-eng-dis_redis_net ${WORKER_CONTAINER}`,
             );
         } catch {
             // Ignorar se já está conectado
@@ -383,7 +383,7 @@ describe("Cenário 4: API Gemini indisponível → Circuit Breaker ativado (part
     afterAll(async () => {
         try {
             exec(
-                `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+                `docker network connect projeto-final-eng-dis_redis_net ${WORKER_CONTAINER}`,
             );
         } catch {
             // Ignorar
@@ -392,10 +392,16 @@ describe("Cenário 4: API Gemini indisponível → Circuit Breaker ativado (part
     });
 
     it("worker abre Circuit Breaker quando não consegue acessar Gemini (partição de rede); job falha", async () => {
-        exec(
-            `docker network disconnect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
-        );
-        console.log(`[Cenário 4] Worker desconectado da rede`);
+        try {
+            exec(
+                `docker network disconnect projeto-final-eng-dis_redis_net ${WORKER_CONTAINER}`,
+            );
+            console.log(`[Cenário 4] Worker desconectado da rede (redis_net)`);
+        } catch {
+            console.log(
+                `[Cenário 4] Worker já estava desconectado ou a rede não foi encontrada.`,
+            );
+        }
 
         await sleep(3000);
 
@@ -416,10 +422,14 @@ describe("Cenário 4: API Gemini indisponível → Circuit Breaker ativado (part
 
         await sleep(2000);
 
-        exec(
-            `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
-        );
-        console.log(`[Cenário 4] Worker reconectado à rede`);
+        try {
+            exec(
+                `docker network connect projeto-final-eng-dis_redis_net ${WORKER_CONTAINER}`,
+            );
+        } catch {
+            // Ignorar se já está conectado
+        }
+        console.log(`[Cenário 4] Worker reconectado à rede (redis_net)`);
 
         await sleep(20000);
 
