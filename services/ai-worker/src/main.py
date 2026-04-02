@@ -6,19 +6,19 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pybreaker
+from db.session import AsyncSessionLocal, engine
 from fastapi import FastAPI, HTTPException
+from models.domain import Base
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
-
-from db.session import AsyncSessionLocal, engine
-from models.domain import Base
 from services.ai_service import call_llm, generate_challenges
-from services.repository import (
-    create_or_update_generation_job,
-    get_last_generation_result,
-    update_generation_job_status,
-)
+from services.repository import (count_static_challenges,
+                                 create_or_update_generation_job,
+                                 get_last_generation_result,
+                                 save_static_challenges,
+                                 update_generation_job_status)
+from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
+                      wait_exponential)
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("ai-worker")
@@ -74,81 +74,6 @@ async def push_challenges_to_pool(ad_id: str, challenges: list[Any]) -> int:
     await redis_client.lpush(pool_key, *serialized)
     return len(serialized)
 
-
-async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    job_id = str(payload.get("job_id") or f"job_{uuid.uuid4().hex[:8]}")
-    ad_id = str(payload.get("ad_id") or "").strip()
-    requested_count = int(payload.get("requested_count") or 0)
-
-    if not ad_id or requested_count <= 0:
-        raise ValueError("Payload inválido: ad_id e requested_count são obrigatórios.")
-
-    global last_job_status
-    last_job_status = {
-        "job_id": job_id,
-        "ad_id": ad_id,
-        "requested_count": requested_count,
-        "status": "processing",
-    }
-
-    async with AsyncSessionLocal() as session:
-        # kill switch para desabilitar geração de desafios via Gemini
-        is_enabled = await redis_client.get("feature_flag:ai_enabled")
-        if is_enabled == b"false":
-            await create_or_update_generation_job(
-                session=session,
-                job_id=job_id,
-                ad_id=ad_id,
-                requested_count=requested_count,
-                status="failed",
-                reason=str(payload.get("reason") or "refill"),
-            )
-            last_job_status = {
-                "job_id": job_id,
-                "status": "failed",
-                "error": "Kill Switch ativado: A API do Gemini foi desligada manualmente.",
-            }
-            raise RuntimeError("Kill Switch ativado: A API do Gemini foi desligada manualmente.")
-
-        await create_or_update_generation_job(
-            session=session,
-            job_id=job_id,
-            ad_id=ad_id,
-            requested_count=requested_count,
-            status="processing",
-            reason=str(payload.get("reason") or "refill"),
-        )
-
-        try:
-            challenges = await generate_challenges(
-                session=session,
-                job_id=job_id,
-                ad_id=ad_id,
-                requested_count=requested_count,
-                llm_callable=protected_llm_call,
-            )
-            pushed = await push_challenges_to_pool(ad_id, challenges)
-            await update_generation_job_status(session, job_id, "completed")
-
-            last_job_status = {
-                "job_id": job_id,
-                "ad_id": ad_id,
-                "requested_count": requested_count,
-                "generated_count": len(challenges),
-                "pushed_to_pool": pushed,
-                "status": "completed",
-            }
-            return last_job_status
-        except Exception as exc:
-            await update_generation_job_status(session, job_id, "failed")
-            last_job_status = {
-                "job_id": job_id,
-                "ad_id": ad_id,
-                "requested_count": requested_count,
-                "status": "failed",
-                "error": str(exc),
-            }
-            raise
 
 
 async def consume_refill_stream() -> None:
@@ -212,8 +137,17 @@ async def health() -> dict[str, Any]:
     if redis_client is not None:
         redis_ok = bool(await redis_client.ping())
 
+    # Verifica se a última tentativa falhou devido ao Kill Switch
+    is_ai_killed = (
+        last_job_status.get("status") == "failed" 
+        and "Kill Switch ativado" in str(last_job_status.get("error", ""))
+    )
+    
+    # Status global reflete a saúde do Worker
+    status = "error" if (not redis_ok or is_ai_killed) else "ok"
+
     return {
-        "status": "ok",
+        "status": status,
         "redis": "up" if redis_ok else "down",
         "circuit_breaker": str(circuit_breaker.current_state),
         "last_job_status": last_job_status,
@@ -243,3 +177,82 @@ async def get_last_job_status() -> dict[str, Any]:
         "memory": last_job_status,
         "database": db_last,
     }
+
+async def process_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    job_id = str(payload.get("job_id") or f"job_{uuid.uuid4().hex[:8]}")
+    ad_id = str(payload.get("ad_id") or "").strip()
+    requested_count = int(payload.get("requested_count") or 0)
+
+    if not ad_id or requested_count <= 0:
+        raise ValueError("Payload inválido: ad_id e requested_count são obrigatórios.")
+
+    global last_job_status
+    last_job_status = {
+        "job_id": job_id,
+        "ad_id": ad_id,
+        "requested_count": requested_count,
+        "status": "processing",
+    }
+
+    async with AsyncSessionLocal() as session:
+        is_enabled = await redis_client.get("feature_flag:ai_enabled")
+        if is_enabled == b"false":
+            await create_or_update_generation_job(
+                session=session, job_id=job_id, ad_id=ad_id,
+                requested_count=requested_count, status="failed", reason=str(payload.get("reason") or "refill"),
+            )
+            last_job_status = {
+                "job_id": job_id,
+                "status": "failed",
+                "error": "Kill Switch ativado: A API do Gemini foi desligada manualmente.",
+            }
+            raise RuntimeError("Kill Switch ativado: A API do Gemini foi desligada manualmente.")
+
+        static_count = await count_static_challenges(session, ad_id)
+        needs_static = static_count == 0
+        
+        # Pede  mais se o fallback estiver vazio
+        total_to_request = requested_count + (3 if needs_static else 0)
+
+        await create_or_update_generation_job(
+            session=session, job_id=job_id, ad_id=ad_id,
+            requested_count=requested_count, status="processing", reason=str(payload.get("reason") or "refill"),
+        )
+
+        try:
+            challenges = await generate_challenges(
+                session=session,
+                job_id=job_id,
+                ad_id=ad_id,
+                requested_count=total_to_request, 
+                llm_callable=protected_llm_call,
+            )
+            
+            pool_challenges = challenges
+            if needs_static and len(challenges) > requested_count:
+                static_challenges = challenges[-3:] 
+                pool_challenges = challenges[:-3]   
+                await save_static_challenges(session, ad_id, static_challenges)
+
+            pushed = await push_challenges_to_pool(ad_id, pool_challenges)
+            await update_generation_job_status(session, job_id, "completed")
+
+            last_job_status = {
+                "job_id": job_id,
+                "ad_id": ad_id,
+                "requested_count": requested_count,
+                "generated_count": len(challenges),
+                "pushed_to_pool": pushed,
+                "status": "completed",
+            }
+            return last_job_status
+        except Exception as exc:
+            await update_generation_job_status(session, job_id, "failed")
+            last_job_status = {
+                "job_id": job_id,
+                "ad_id": ad_id,
+                "requested_count": requested_count,
+                "status": "failed",
+                "error": str(exc),
+            }
+            raise

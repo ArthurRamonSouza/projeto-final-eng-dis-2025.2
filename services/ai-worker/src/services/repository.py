@@ -1,11 +1,12 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import desc
+from models.domain import (AdContent, GenerationJob, GenerationResult,
+                           StaticChallenge)
+from schemas.contracts import Challenge
+from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-
-from models.domain import AdContent, GenerationJob, GenerationResult
 
 
 async def get_ad_content(session: AsyncSession, ad_id: str) -> str | None:
@@ -105,3 +106,23 @@ async def get_last_generation_result(session: AsyncSession) -> dict[str, Any] | 
         "error_message": row.error_message,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+async def count_static_challenges(session: AsyncSession, ad_id: str) -> int:
+    stmt = select(func.count()).select_from(StaticChallenge).where(StaticChallenge.ad_id == ad_id)
+    result = await session.execute(stmt)
+    return result.scalar() or 0
+
+async def save_static_challenges(session: AsyncSession, ad_id: str, challenges: list[Challenge]) -> None:
+    for c in challenges:
+        new_static = StaticChallenge(
+            id=f"st_{uuid.uuid4().hex[:8]}",
+            ad_id=ad_id,
+            type=c.type,
+            question=c.question,
+            options_json=c.options,
+            correct_answer=c.correct_answer,
+            source="static",
+            status="active"
+        )
+        session.add(new_static)
+    await session.commit()
