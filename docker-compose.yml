@@ -88,20 +88,18 @@ services:
           cpus: "1.0"
           memory: 512M
 
-  # Painel React (Vite): npm ci + dev no container — abre no host em PANEL_PORT
   panel:
     image: node:22-bookworm-slim
     working_dir: /app
     ports:
       - "${PANEL_PORT:-5173}:5173"
     environment:
-      # URL da API **no browser** (máquina do utilizador). Deve coincidir com ENGINE_PORT no host.
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     volumes:
       - ./POC4-panel:/app
       - poc4_panel_node_modules:/app/node_modules
     command: >
-      sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+      sh -c "npm ci && npm run prod"
     depends_on:
       - engine
 
