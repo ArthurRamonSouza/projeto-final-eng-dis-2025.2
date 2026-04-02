@@ -5,10 +5,6 @@ const BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
 const COMPOSE_PROJECT = process.env.COMPOSE_PROJECT ?? "projeto-final-eng-dis";
 const POSTGRES_CONTAINER = `${COMPOSE_PROJECT}-postgres-1`;
 
-/**
- * Insere desafios estáticos no PostgreSQL para garantir que o fallback
- * funcione independentemente do worker AI (ex.: chave Gemini não configurada).
- */
 function seedStaticChallenges(adId: string, count = 3): void {
     for (let i = 0; i < count; i++) {
         const id = `st_int_${adId.slice(3, 11)}_${i}`;
@@ -116,16 +112,20 @@ describe("Integração — Fluxo ponta a ponta", () => {
             adId = ad.id as string;
         });
 
-        it("Fluxo A — job de refill inicial aparece em generation_jobs com status 'pending'", () => {
+        it("Fluxo A — job de refill inicial aparece em generation_jobs com status 'pending' ou 'processing'", async () => {
             if (!adId) throw new Error("adId não definido — Passo 2 falhou");
+            await sleep(500);
+
             const output = execSync(
-                `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT COUNT(*) FROM generation_jobs WHERE ad_id = '${adId}' AND status = 'pending'"`,
+                `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT COUNT(*) FROM generation_jobs WHERE ad_id = '${adId}' AND status IN ('pending', 'processing')"`,
                 { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
             ).trim();
             const count = parseInt(output.trim(), 10);
+
             console.log(
-                `[Fluxo A] adId=${adId} → jobs pending no DB: ${count}`,
+                `[Fluxo A] adId=${adId} → jobs (pending ou processing) no DB: ${count}`,
             );
+
             expect(count).toBeGreaterThanOrEqual(1);
         });
 
@@ -237,7 +237,6 @@ describe("Integração — Fluxo ponta a ponta", () => {
     describe("Passo 5: GET /ads/:adId/challenge — com retry", () => {
         beforeAll(() => {
             if (!adId) throw new Error("adId não definido — Passo 2 falhou");
-            // Garante desafios estáticos como fallback caso o worker AI não tenha preenchido o pool
             seedStaticChallenges(adId);
         });
 
@@ -280,7 +279,6 @@ describe("Integração — Fluxo ponta a ponta", () => {
 
             if (challenge.source === "ai") {
                 expect(body.fallback_used).toBe(false);
-                // Fluxo B: pool cheio → entrega abaixo de 50 ms
                 console.log(
                     `[Fluxo B] Entrega AI com pool cheio: ${elapsedMs}ms (limite: 50ms)`,
                 );

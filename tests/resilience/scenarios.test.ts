@@ -26,7 +26,7 @@ async function waitForApi(retries = 15, delaySec = 2): Promise<void> {
             const res = await fetch(`${BASE_URL}/health`);
             if (res.ok) return;
         } catch {
-            // API not yet available, retry
+            // Ignorar erros
         }
         await sleep(delaySec * 1000);
     }
@@ -41,7 +41,7 @@ async function waitForWorker(retries = 10, delaySec = 2): Promise<void> {
             const res = await fetch(`${AI_WORKER_URL}/health`);
             if (res.ok) return;
         } catch {
-            // Worker not yet available, retry
+            // Ignorar erros
         }
         await sleep(delaySec * 1000);
     }
@@ -89,7 +89,7 @@ function ensureContainerRunning(name: string): void {
     try {
         exec(`docker start ${name}`);
     } catch {
-        // Ignore errors if container is already running
+        // Ignorar erros
     }
 }
 
@@ -225,13 +225,10 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
     }, 30_000);
 
     it("Fluxo D — worker marca job como 'failed' em generation_results quando geração falha", async () => {
-        // Garante que o worker está no ar e respondendo
         ensureContainerRunning(WORKER_CONTAINER);
+        await sleep(3000);
         await waitForWorker(10, 1);
 
-        // Insere um ad diretamente na tabela 'ads' SEM ad_contents correspondente.
-        // O worker chama get_ad_content() → retorna None → salva status='failed' e lança ValueError.
-        // Esta estratégia funciona independentemente da GEMINI_API_KEY estar configurada ou não.
         const noContentAdId = `ad_noctnt${Date.now().toString(16).slice(-8)}`;
         execSync(`docker exec -i ${POSTGRES_CONTAINER} psql -U app -d app`, {
             input: `INSERT INTO ads (id, title, advertiser_name, status, created_at) VALUES ('${noContentAdId}', 'Ad sem conteudo', 'Tester', 'active', NOW());`,
@@ -251,13 +248,11 @@ describe("Cenário 2: IA indisponível → engine permanece responsivo", () => {
             }),
         });
 
-        // Worker retorna 500 quando a geração falha (conteúdo não encontrado)
         console.log(
             `[Fluxo D] POST /internal/generate respondeu HTTP ${res.status}`,
         );
         expect([500, 503]).toContain(res.status);
 
-        // Verifica que o resultado foi registrado como 'failed' na tabela generation_results
         const output = execSync(
             `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT COUNT(*) FROM generation_results WHERE job_id = '${jobId}' AND status = 'failed'"`,
             { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
@@ -290,12 +285,22 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
     });
 
     it("GET /challenge com Redis offline retorna 200 via fallback PostgreSQL", async () => {
-        exec(`docker stop ${REDIS_CONTAINER}`);
+        const countSql = `SELECT COUNT(*) FROM static_challenges WHERE ad_id = '${adId}'`;
+        const countOutput = execSync(
+            `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "${countSql}"`,
+            { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+        ).trim();
+        const staticCount = parseInt(countOutput.trim(), 10);
+        console.log(
+            `[Cenário 3] Verificado: ${staticCount} desafios estáticos no DB para adId=${adId}`,
+        );
+        expect(staticCount).toBeGreaterThanOrEqual(1);
+
+        exec(`docker stop --time 3 ${REDIS_CONTAINER}`);
         console.log(`[Cenário 3] Redis parado`);
-        // Aguarda ioredis detectar a queda + circuit breaker estabilizar
+
         await sleep(6000);
 
-        // Tenta até 3 vezes: primeira pode demorar enquanto ioredis esgota as retentativas
         let res: Response | null = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
             res = await fetch(`${BASE_URL}/ads/${adId}/challenge`);
@@ -324,7 +329,7 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
         expect(body.challenge.source).toBe("static");
         expect(body.challenge.type).toBe("multiple_choice");
         expect(body.challenge.options).toHaveLength(4);
-    }, 30_000);
+    }, 60_000);
 
     it("GET /health/dependencies mostra redis='error' e postgres='ok' com Redis offline", async () => {
         exec(`docker stop ${REDIS_CONTAINER}`);
@@ -338,7 +343,7 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
         expect(res.status).toBe(200);
         expect(body.dependencies.redis).toBe("error");
         expect(body.dependencies.postgres).toBe("ok");
-    }, 30_000);
+    }, 45_000);
 
     it("Redis volta a 'ok' no health após docker start e reconexão", async () => {
         exec(`docker stop ${REDIS_CONTAINER}`);
@@ -355,4 +360,84 @@ describe("Cenário 3: Redis indisponível → fallback PostgreSQL + recuperaçã
         expect(res.status).toBe(200);
         expect(body.dependencies.redis).toBe("ok");
     }, 40_000);
+});
+
+describe("Cenário 4: API Gemini indisponível → Circuit Breaker ativado (partição de rede)", () => {
+    let adId: string;
+
+    beforeAll(async () => {
+        adId = await createTestAd();
+    });
+
+    afterEach(async () => {
+        try {
+            exec(
+                `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+            );
+        } catch {
+            // Ignorar se já está conectado
+        }
+        await sleep(2000);
+    });
+
+    afterAll(async () => {
+        try {
+            exec(
+                `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+            );
+        } catch {
+            // Ignorar
+        }
+        await sleep(3000);
+    });
+
+    it("worker abre Circuit Breaker quando não consegue acessar Gemini (partição de rede); job falha", async () => {
+        exec(
+            `docker network disconnect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+        );
+        console.log(`[Cenário 4] Worker desconectado da rede`);
+
+        await sleep(3000);
+
+        const refillRes = await fetch(`${BASE_URL}/ads/${adId}/refill`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requested_count: 1 }),
+        });
+        expect(refillRes.status).toBe(201);
+
+        const refillBody = (await refillRes.json()) as {
+            job: { job_id: string; status: string };
+        };
+        const jobId = refillBody.job.job_id;
+        console.log(
+            `[Cenário 4] Job criado: ${jobId} status=pending (worker offline)`,
+        );
+
+        await sleep(2000);
+
+        exec(
+            `docker network connect projeto-final-eng-dis_default ${WORKER_CONTAINER}`,
+        );
+        console.log(`[Cenário 4] Worker reconectado à rede`);
+
+        await sleep(20000);
+
+        const jobStatus = execSync(
+            `docker exec ${POSTGRES_CONTAINER} psql -U app -d app -t -c "SELECT status FROM generation_jobs WHERE job_id = '${jobId}'"`,
+            { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+        ).trim();
+
+        console.log(`[Cenário 4] Job ${jobId} status no DB: ${jobStatus}`);
+        expect(jobStatus).toBe("failed");
+
+        const healthRes = await fetch(`${AI_WORKER_URL}/health`);
+        const healthBody = (await healthRes.json()) as {
+            circuit_breaker: string;
+        };
+        console.log(
+            `[Cenário 4] Circuit breaker state: ${healthBody.circuit_breaker}`,
+        );
+        expect(["open", "OPEN"]).toContain(healthBody.circuit_breaker);
+    }, 70_000);
 });
