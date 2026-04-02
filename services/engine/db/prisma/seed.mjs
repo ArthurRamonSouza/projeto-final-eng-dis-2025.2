@@ -13,8 +13,7 @@ dotenv.config({ path: resolve(__dirname, "../../.env"), override: true });
 const { Pool } = pg;
 
 const connectionString =
-    process.env.DATABASE_URL ??
-    "postgresql://app:app@localhost:5433/app";
+    process.env.DATABASE_URL ?? "postgresql://app:app@localhost:5433/app";
 
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
