@@ -43,7 +43,11 @@ export async function ipRateLimit(
         return;
     }
 
-    if (req.path === "/health" || req.path.startsWith("/health/")) {
+    if (
+        req.path === "/health" ||
+        req.path.startsWith("/health/") ||
+        req.path.startsWith("/metrics")
+    ) {
         next();
         return;
     }
