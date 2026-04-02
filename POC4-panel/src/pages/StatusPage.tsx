@@ -1,22 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPoolStatus, listAds, triggerRefill } from "../api/ads";
-import { getDependenciesHealth, toggleAI } from "../api/health";
+import {
+  getDependenciesHealth,
+  getRedisPoolCircuit,
+  toggleAI,
+} from "../api/health";
 import { getMetricsSummary } from "../api/metrics";
-import type { Ad, DependenciesHealthResponse, MetricsSummaryResponse, PoolStatus } from "../types";
+import type {
+  Ad,
+  DependenciesHealthResponse,
+  MetricsSummaryResponse,
+  PoolStatus,
+  RedisPoolCircuitResponse,
+} from "../types";
 import { AdSelector } from "../components/AdSelector";
 import { PoolStatusCard } from "../components/PoolStatusCard";
 import { DependenciesHealthCard } from "../components/DependenciesHealthCard";
+import { RedisPoolCircuitCard } from "../components/RedisPoolCircuitCard";
+import { MetricsSummaryCard } from "../components/MetricsSummaryCard";
 import { RefillButton } from "../components/RefillButton";
 import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
 import { AppButton } from "../components/AppButton";
 import { AIToggleCard } from "../components/AIToggleCard";
-import { MetricsSummaryCard } from "../components/MetricsSummaryCard";
 
 const POOL_AUTO_REFRESH_MS = 5000;
 const HEALTH_AUTO_REFRESH_MS = 10000;
 const METRICS_AUTO_REFRESH_MS = 10000;
+const REDIS_POOL_CIRCUIT_AUTO_REFRESH_MS = 10000;
 
 function formatLastUpdate(date: Date | null) {
   if (!date) return "—";
@@ -32,29 +44,40 @@ export function StatusPage() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [selectedAdId, setSelectedAdId] = useState("");
   const [poolStatus, setPoolStatus] = useState<PoolStatus | null>(null);
-  const [healthData, setHealthData] = useState<DependenciesHealthResponse | null>(null);
-  const [metricsData, setMetricsData] = useState<MetricsSummaryResponse | null>(null);
+  const [healthData, setHealthData] =
+    useState<DependenciesHealthResponse | null>(null);
+  const [metricsData, setMetricsData] =
+    useState<MetricsSummaryResponse | null>(null);
+  const [redisPoolCircuitData, setRedisPoolCircuitData] =
+    useState<RedisPoolCircuitResponse | null>(null);
 
   const [isLoadingAds, setIsLoadingAds] = useState(true);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+  const [isLoadingRedisPoolCircuit, setIsLoadingRedisPoolCircuit] =
+    useState(false);
   const [isSubmittingRefill, setIsSubmittingRefill] = useState(false);
   const [isTogglingAI, setIsTogglingAI] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [lastPoolUpdatedAt, setLastPoolUpdatedAt] = useState<Date | null>(null);
-  const [lastHealthUpdatedAt, setLastHealthUpdatedAt] = useState<Date | null>(null);
-  const [lastMetricsUpdatedAt, setLastMetricsUpdatedAt] = useState<Date | null>(null);
+  const [lastHealthUpdatedAt, setLastHealthUpdatedAt] =
+    useState<Date | null>(null);
+  const [lastMetricsUpdatedAt, setLastMetricsUpdatedAt] =
+    useState<Date | null>(null);
+  const [lastRedisPoolCircuitUpdatedAt, setLastRedisPoolCircuitUpdatedAt] =
+    useState<Date | null>(null);
 
   // Estado local para a POC.
-  // Como você só informou o endpoint de toggle, iniciamos como true.
+  // Como existe apenas o endpoint de toggle, iniciamos como true.
   const [aiEnabled, setAiEnabled] = useState(true);
 
   const poolIntervalRef = useRef<number | null>(null);
   const healthIntervalRef = useRef<number | null>(null);
   const metricsIntervalRef = useRef<number | null>(null);
+  const redisPoolCircuitIntervalRef = useRef<number | null>(null);
 
   async function loadAds() {
     try {
@@ -111,38 +134,6 @@ export function StatusPage() {
     }
   }
 
-  async function loadMetrics(options?: { showToast?: boolean; silent?: boolean }) {
-    const showToast = options?.showToast ?? false;
-    const silent = options?.silent ?? false;
-
-    try {
-      setErrorMessage(null);
-
-      if (!silent) {
-        setIsLoadingMetrics(true);
-      }
-
-      const response = await getMetricsSummary();
-      setMetricsData(response);
-      setLastMetricsUpdatedAt(new Date());
-
-      if (showToast) {
-        toast.success("Métricas atualizadas.");
-      }
-    } catch (error) {
-      console.error(error);
-
-      if (!silent) {
-        setErrorMessage("Não foi possível carregar as métricas da Engine.");
-        toast.error("Falha ao carregar métricas.");
-      }
-    } finally {
-      if (!silent) {
-        setIsLoadingMetrics(false);
-      }
-    }
-  }
-
   async function loadHealth(options?: { showToast?: boolean; silent?: boolean }) {
     const showToast = options?.showToast ?? false;
     const silent = options?.silent ?? false;
@@ -175,6 +166,67 @@ export function StatusPage() {
     }
   }
 
+  async function loadMetrics(options?: { showToast?: boolean; silent?: boolean }) {
+    const showToast = options?.showToast ?? false;
+    const silent = options?.silent ?? false;
+
+    try {
+      if (!silent) {
+        setIsLoadingMetrics(true);
+      }
+
+      const response = await getMetricsSummary();
+      setMetricsData(response);
+      setLastMetricsUpdatedAt(new Date());
+
+      if (showToast) {
+        toast.success("Métricas agregadas atualizadas.");
+      }
+    } catch (error) {
+      console.error(error);
+
+      if (!silent) {
+        toast.error("Não foi possível carregar as métricas agregadas.");
+      }
+    } finally {
+      if (!silent) {
+        setIsLoadingMetrics(false);
+      }
+    }
+  }
+
+  async function loadRedisPoolCircuit(options?: {
+    showToast?: boolean;
+    silent?: boolean;
+  }) {
+    const showToast = options?.showToast ?? false;
+    const silent = options?.silent ?? false;
+
+    try {
+      if (!silent) {
+        setIsLoadingRedisPoolCircuit(true);
+      }
+
+      const response = await getRedisPoolCircuit();
+      setRedisPoolCircuitData(response);
+      setLastRedisPoolCircuitUpdatedAt(new Date());
+
+      if (showToast) {
+        toast.success("Estado do circuit breaker atualizado.");
+      }
+    } catch (error) {
+      console.error(error);
+
+      if (!silent) {
+        toast.error("Não foi possível carregar o circuit breaker do Redis.");
+      }
+    } finally {
+      if (!silent) {
+        setIsLoadingRedisPoolCircuit(false);
+      }
+    }
+  }
+
   async function handleManualRefill() {
     if (!selectedAdId) {
       setErrorMessage("Selecione um anúncio antes de solicitar refill.");
@@ -189,7 +241,9 @@ export function StatusPage() {
       setIsSubmittingRefill(true);
 
       await triggerRefill(selectedAdId, { requested_count: 5 });
-      toast.success("Refill manual solicitado com sucesso.", { id: loadingToastId });
+      toast.success("Refill manual solicitado com sucesso.", {
+        id: loadingToastId,
+      });
 
       await loadPoolStatus(selectedAdId, { silent: false });
     } catch (error) {
@@ -204,7 +258,7 @@ export function StatusPage() {
   async function handleToggleAI() {
     const nextEnabled = !aiEnabled;
     const loadingToastId = toast.loading(
-      nextEnabled ? "Ligando API do Gemini..." : "Desligando API do Gemini..."
+      nextEnabled ? "Ligando API do Gemini..." : "Desligando API do Gemini...",
     );
 
     try {
@@ -226,25 +280,26 @@ export function StatusPage() {
   }
 
   async function handleRefreshAll() {
+    const promises: Promise<unknown>[] = [
+      loadHealth({ showToast: true, silent: false }),
+      loadMetrics({ showToast: false, silent: false }),
+      loadRedisPoolCircuit({ showToast: false, silent: false }),
+    ];
+
     if (selectedAdId) {
-      await Promise.all([
+      promises.push(
         loadPoolStatus(selectedAdId, { showToast: true, silent: false }),
-        loadHealth({ showToast: true, silent: false }),
-        loadMetrics({ showToast: true, silent: false }),
-      ]);
-      return;
+      );
     }
 
-    await Promise.all([
-      loadHealth({ showToast: true, silent: false }),
-      loadMetrics({ showToast: true, silent: false }),
-    ]);
+    await Promise.all(promises);
   }
 
   useEffect(() => {
     void loadAds();
     void loadHealth({ silent: false });
     void loadMetrics({ silent: false });
+    void loadRedisPoolCircuit({ silent: false });
   }, []);
 
   useEffect(() => {
@@ -306,15 +361,34 @@ export function StatusPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (redisPoolCircuitIntervalRef.current) {
+      window.clearInterval(redisPoolCircuitIntervalRef.current);
+    }
+
+    redisPoolCircuitIntervalRef.current = window.setInterval(() => {
+      void loadRedisPoolCircuit({ silent: true });
+    }, REDIS_POOL_CIRCUIT_AUTO_REFRESH_MS);
+
+    return () => {
+      if (redisPoolCircuitIntervalRef.current) {
+        window.clearInterval(redisPoolCircuitIntervalRef.current);
+        redisPoolCircuitIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <section className="grid gap-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-lg font-semibold text-slate-900">Monitoramento da POC</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Monitoramento da POC
+              </h3>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                Auto refresh: pool {POOL_AUTO_REFRESH_MS / 1000}s
+                Pool {POOL_AUTO_REFRESH_MS / 1000}s
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 Health {HEALTH_AUTO_REFRESH_MS / 1000}s
@@ -322,14 +396,18 @@ export function StatusPage() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 Métricas {METRICS_AUTO_REFRESH_MS / 1000}s
               </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                Circuit {REDIS_POOL_CIRCUIT_AUTO_REFRESH_MS / 1000}s
+              </span>
             </div>
 
             <p className="mt-1 text-sm text-slate-600">
-              Consulte o estado do pool por anúncio, verifique a saúde das dependências e dispare refill manual.
+              Consulte o estado do pool por anúncio, verifique a saúde das
+              dependências, acompanhe métricas agregadas e dispare refill manual.
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Última atualização do pool
@@ -356,6 +434,15 @@ export function StatusPage() {
                 {formatLastUpdate(lastMetricsUpdatedAt)}
               </p>
             </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Última atualização do circuit breaker
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">
+                {formatLastUpdate(lastRedisPoolCircuitUpdatedAt)}
+              </p>
+            </div>
           </div>
 
           {errorMessage && <ErrorState message={errorMessage} />}
@@ -368,7 +455,13 @@ export function StatusPage() {
                 items={ads}
                 selectedAdId={selectedAdId}
                 onChange={setSelectedAdId}
-                disabled={isSubmittingRefill || isLoadingStatus || isTogglingAI}
+                disabled={
+                  isSubmittingRefill ||
+                  isLoadingStatus ||
+                  isTogglingAI ||
+                  isLoadingMetrics ||
+                  isLoadingRedisPoolCircuit
+                }
               />
 
               <div className="flex flex-wrap gap-3">
@@ -385,9 +478,10 @@ export function StatusPage() {
                   disabled={
                     isLoadingStatus ||
                     isLoadingHealth ||
-                    isLoadingMetrics ||
                     isSubmittingRefill ||
-                    isTogglingAI
+                    isTogglingAI ||
+                    isLoadingMetrics ||
+                    isLoadingRedisPoolCircuit
                   }
                 >
                   Atualizar status
@@ -415,8 +509,16 @@ export function StatusPage() {
         healthData && <DependenciesHealthCard data={healthData} />
       )}
 
+      {isLoadingRedisPoolCircuit && !redisPoolCircuitData ? (
+        <LoadingState message="Carregando estado do circuit breaker..." />
+      ) : (
+        redisPoolCircuitData && (
+          <RedisPoolCircuitCard data={redisPoolCircuitData} />
+        )
+      )}
+
       {isLoadingMetrics && !metricsData ? (
-        <LoadingState message="Carregando métricas da Engine..." />
+        <LoadingState message="Carregando métricas agregadas..." />
       ) : (
         metricsData && <MetricsSummaryCard data={metricsData} />
       )}

@@ -31,3 +31,8 @@ export type MetricsSummaryResponse = {
     concurrent_slots_max: number;
   };
 };
+
+export type RedisPoolCircuitResponse = {
+  service: string;
+  redis_challenge_pool_circuit: "open" | "half_open" | "closed";
+};
