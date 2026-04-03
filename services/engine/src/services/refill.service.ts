@@ -1,7 +1,10 @@
 import { env } from "../config/env.js";
+import { withTimeout } from "../lib/with-timeout.js";
 import { enqueueRefillJob } from "../queues/refill-queue.js";
 import { generationJobRepository } from "../repositories/generation-job.repository.js";
 import { isSheddingLoad } from "./load-shedding.service.js";
+
+const ENQUEUE_REFILL_TIMEOUT_MS = 5_000;
 
 export async function evaluateRefill(
     adId: string,
@@ -28,12 +31,19 @@ export async function evaluateRefill(
         reason: "refill",
     });
 
-    await enqueueRefillJob({
-        jobId: job.jobId,
-        adId,
-        requestedCount: gap,
-        reason: "refill",
-    });
+    try {
+        await withTimeout(
+            enqueueRefillJob({
+                jobId: job.jobId,
+                adId,
+                requestedCount: gap,
+                reason: "refill",
+            }),
+            ENQUEUE_REFILL_TIMEOUT_MS,
+        );
+    } catch {
+        return { refillRequested: true, newJobCreated: false };
+    }
 
     return { refillRequested: true, newJobCreated: true };
 }
