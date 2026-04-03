@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env.js";
 import { redis } from "../lib/redis.js";
+import { withTimeout } from "../lib/with-timeout.js";
 import { getRefillQueueCounts } from "../queues/refill-queue.js";
+
+/** Evita bloqueio indefinido em BullMQ/Redis quando o broker está indisponível. */
+const REDIS_OP_TIMEOUT_MS = 5_000;
 
 const SLOTS_KEY = "engine:load:concurrent_slots";
 
@@ -39,7 +43,10 @@ export async function loadSheddingMiddleware(
     }
 
     try {
-        const counts = await getRefillQueueCounts();
+        const counts = await withTimeout(
+            getRefillQueueCounts(),
+            REDIS_OP_TIMEOUT_MS,
+        );
         const backlog = counts.waiting + counts.delayed;
         if (backlog > env.LOAD_SHED_MAX_WAITING) {
             res.setHeader(
@@ -56,12 +63,15 @@ export async function loadSheddingMiddleware(
         }
 
         if (env.LOAD_SHED_CONCURRENT_MAX > 0) {
-            const raw = (await redis.eval(
-                LUA_ACQUIRE,
-                1,
-                SLOTS_KEY,
-                String(env.LOAD_SHED_CONCURRENT_MAX),
-                String(env.LOAD_SHED_SLOT_TTL_SEC),
+            const raw = (await withTimeout(
+                redis.eval(
+                    LUA_ACQUIRE,
+                    1,
+                    SLOTS_KEY,
+                    String(env.LOAD_SHED_CONCURRENT_MAX),
+                    String(env.LOAD_SHED_SLOT_TTL_SEC),
+                ),
+                REDIS_OP_TIMEOUT_MS,
             )) as unknown;
             const ok = Number(raw) === 1;
             if (!ok) {

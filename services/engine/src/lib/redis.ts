@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 
 export const redis = new Redis(env.REDIS_QUEUE_URL, {
     maxRetriesPerRequest: 2,
+    connectTimeout: 10_000,
 });
 
 export function poolKey(adId: string): string {

@@ -16,6 +16,7 @@ export type RefillJobPayload = {
 function createConnection(): Redis {
     return new Redis(env.REDIS_QUEUE_URL, {
         maxRetriesPerRequest: null,
+        connectTimeout: 10_000,
     });
 }
 

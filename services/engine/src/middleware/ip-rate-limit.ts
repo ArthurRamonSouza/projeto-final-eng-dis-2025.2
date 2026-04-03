@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env.js";
 import { redis } from "../lib/redis.js";
+import { withTimeout } from "../lib/with-timeout.js";
+
+const RATE_LIMIT_REDIS_TIMEOUT_MS = 5_000;
 
 const LUA_INCR_EXPIRE = `
 local count = redis.call('INCR', KEYS[1])
@@ -58,11 +61,9 @@ export async function ipRateLimit(
     const max = env.RATE_LIMIT_MAX;
 
     try {
-        const raw = (await redis.eval(
-            LUA_INCR_EXPIRE,
-            1,
-            key,
-            String(windowSec),
+        const raw = (await withTimeout(
+            redis.eval(LUA_INCR_EXPIRE, 1, key, String(windowSec)),
+            RATE_LIMIT_REDIS_TIMEOUT_MS,
         )) as unknown;
         const tuple = raw as [number, number];
         const count = Number(tuple[0]);
