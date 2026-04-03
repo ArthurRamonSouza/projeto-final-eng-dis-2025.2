@@ -15,6 +15,10 @@
 
 POC 4 — IA como Pool (Não Dependência Síncrona)
 
+### Vídeo de apresentação
+
+Pasta no Google Drive com o vídeo do projeto: [Engenharia de Sistemas Distribuídos: Video do Projeto Final](https://drive.google.com/drive/folders/1vtnfvhsOTjFJvIDumpM_wQcnoc0GLHcq).
+
 ## Ambiente local (Docker)
 
 1. **Variáveis de ambiente (obrigatório):**
