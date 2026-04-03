@@ -11,7 +11,6 @@ tests/
 ├── resilience/
 │   └── scenarios.test.ts       # Cenários de resiliência (Redis down, worker offline, etc.)
 ├── load-test.js                # Teste de carga padrão (k6)
-└── load-test-pool-empty.js     # Teste de carga com pool Redis esvaziado (k6)
 ```
 
 ## Pré-requisitos
@@ -70,32 +69,4 @@ docker run --rm -i --network host grafana/k6 run - < tests/load-test.js
 
 # Com URL customizada
 k6 run -e BASE_URL=http://localhost:8000 tests/load-test.js
-```
-
-### `load-test-pool-empty.js` — Carga com pool vazio
-
-Valida que o sistema mantém disponibilidade via **fallback estático (PostgreSQL)** quando o pool Redis está vazio.
-
-**Pré-requisito:** esvaziar o pool Redis antes de executar:
-
-```bash
-# Opção 1: flush total do banco Redis
-docker exec projeto-final-eng-dis-redis-1 redis-cli FLUSHDB
-
-# Opção 2: apenas as chaves de pool
-docker exec projeto-final-eng-dis-redis-1 redis-cli --scan --pattern "pool:ad:*" \
-  | xargs docker exec -i projeto-final-eng-dis-redis-1 redis-cli DEL
-```
-
-**Thresholds:**
-
-- Taxa de erros HTTP < 1%
-- `p(95)` de latência de challenge com pool vazio < 200ms
-- Fallback ativado em > 50% das requisições
-
-```bash
-k6 run tests/load-test-pool-empty.js
-
-# Usando Docker
-docker run --rm -i --network host grafana/k6 run - < tests/load-test-pool-empty.js
 ```
